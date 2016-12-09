@@ -1990,6 +1990,8 @@ OS_X11::OS_X11() {
 	AudioDriverManagerSW::add_driver(&driver_alsa);
 #endif
 
+        AudioDriverManagerSW::add_driver(&driver_dummy);
+
 	minimized = false;
 	xim_style=0L;
 	mouse_mode=MOUSE_MODE_VISIBLE;
