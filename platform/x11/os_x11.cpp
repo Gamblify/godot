@@ -1990,7 +1990,10 @@ OS_X11::OS_X11() {
 	AudioDriverManagerSW::add_driver(&driver_alsa);
 #endif
 
-        AudioDriverManagerSW::add_driver(&driver_dummy);
+        if(AudioDriverManagerSW::get_driver_count() == 0){
+            WARN_PRINT("No sound driver found... Defaulting to dummy driver");
+            AudioDriverManagerSW::add_driver(&driver_dummy);
+        }
 
 	minimized = false;
 	xim_style=0L;
