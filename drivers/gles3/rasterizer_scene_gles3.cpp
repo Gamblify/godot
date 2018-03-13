@@ -1762,14 +1762,14 @@ void RasterizerSceneGLES3::_render_geometry(RenderList::Element *e) {
 
 void RasterizerSceneGLES3::_setup_light(RenderList::Element *e, const Transform &p_view_transform) {
 
-	int omni_indices[16];
+	int omni_indices[64];
 	int omni_count = 0;
-	int spot_indices[16];
+	int spot_indices[64];
 	int spot_count = 0;
-	int reflection_indices[16];
+	int reflection_indices[64];
 	int reflection_count = 0;
 
-	int maxobj = MIN(16, state.max_forward_lights_per_object);
+	int maxobj = MIN(64, state.max_forward_lights_per_object);
 
 	int lc = e->instance->light_instances.size();
 	if (lc) {
@@ -4946,7 +4946,7 @@ void RasterizerSceneGLES3::initialize() {
 		glBufferData(GL_UNIFORM_BUFFER, sizeof(LightDataUBO), NULL, GL_DYNAMIC_DRAW);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-		state.max_forward_lights_per_object = 8;
+		state.max_forward_lights_per_object = 64;
 
 		state.scene_shader.add_custom_define("#define MAX_LIGHT_DATA_STRUCTS " + itos(state.max_ubo_lights) + "\n");
 		state.scene_shader.add_custom_define("#define MAX_FORWARD_LIGHTS " + itos(state.max_forward_lights_per_object) + "\n");
