@@ -84,12 +84,16 @@ bool FileSystemDock::_create_tree(TreeItem *p_parent, EditorFileSystemDirectory 
 			String file_type = p_dir->get_file_type(i);
 			bool file_import_valid = p_dir->get_file_import_is_valid(i);
 
-			Ref<Texture> file_thumbnail = get_icon("File", "EditorIcons");
-			Ref<Texture> file_thumbnail_broken = get_icon("ImportFail", "EditorIcons");
+			Ref<Texture> file_icon;
+			if (!file_import_valid) {
+				file_icon = get_icon("ImportFail", "EditorIcons");
+			} else {
+				file_icon = (has_icon(file_type, "EditorIcons")) ? get_icon(file_type, "EditorIcons") : get_icon("File", "EditorIcons");
+			}
 
 			TreeItem *file_item = tree->create_item(subdirectory_item);
 			file_item->set_text(0, file_name);
-			file_item->set_icon(0, file_import_valid ? file_thumbnail : file_thumbnail_broken);
+			file_item->set_icon(0, file_icon);
 			String file_metadata = lpath;
 			if (!lpath.ends_with("/"))
 				file_metadata += "/";
