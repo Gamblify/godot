@@ -52,9 +52,6 @@ bool FileSystemDock::_create_tree(TreeItem *p_parent, EditorFileSystemDirectory 
 	subdirectory_item->set_icon(0, get_icon("Folder", "EditorIcons"));
 	subdirectory_item->set_selectable(0, true);
 	String lpath = p_dir->get_path();
-	if (lpath != "res://" && lpath.ends_with("/")) {
-		lpath = lpath.substr(0, lpath.length() - 1);
-	}
 	subdirectory_item->set_metadata(0, lpath);
 	if (path == lpath || (!display_files_in_tree && path.get_base_dir() == lpath)) {
 		subdirectory_item->select(0);
@@ -138,7 +135,7 @@ void FileSystemDock::_update_tree(bool keep_collapse_state, bool p_uncollapse_ro
 
 	TreeItem *root = tree->create_item();
 
-	// Handles the favorites folders
+	// Handles the favorites
 	TreeItem *favorites = tree->create_item(root);
 	favorites->set_icon(0, get_icon("Favorites", "EditorIcons"));
 	favorites->set_text(0, TTR("Favorites:"));
@@ -242,7 +239,6 @@ void FileSystemDock::_notification(int p_what) {
 			button_file_list_display_mode->connect("pressed", this, "_change_file_display");
 			//file_options->set_icon( get_icon("Tools","ei"));
 			files->connect("item_activated", this, "_file_list_select_file");
-			tree->connect("item_activated", this, "_tree_select_file");
 			button_hist_next->connect("pressed", this, "_fw_history");
 			button_hist_prev->connect("pressed", this, "_bw_history");
 			search_box->set_right_icon(get_icon("Search", ei));
@@ -429,9 +425,9 @@ void FileSystemDock::navigate_to_path(const String &p_path) {
 	_push_to_history();
 
 	if (display_mode == DISPLAY_SPLIT) {
-		_update_tree(true);
+		call_deferred("_update_tree", true);
 		_update_files(false);
-	} else {
+	} else if (!is_file || !display_files_in_tree || display_mode != DISPLAY_TREE_ONLY) {
 		_go_to_file_list();
 	}
 
@@ -669,7 +665,8 @@ void FileSystemDock::_update_files(bool p_keep_selection) {
 			files->select(item_index, false);
 
 		if (!p_keep_selection && file != "" && fname == file) {
-			files->select(item_index, false);
+			files->select(item_index, true);
+			files->ensure_current_is_visible();
 		}
 
 		if (finfo->sources.size()) {
@@ -698,7 +695,8 @@ void FileSystemDock::_select_file(const String p_path) {
 }
 
 void FileSystemDock::_tree_select_file() {
-	_select_file(tree->get_selected()->get_metadata(0));
+	String fpath = tree->get_selected()->get_metadata(0);
+	_select_file(fpath);
 }
 
 void FileSystemDock::_file_list_select_file(int p_idx) {
@@ -708,6 +706,7 @@ void FileSystemDock::_file_list_select_file(int p_idx) {
 void FileSystemDock::_go_to_file_list() {
 
 	if (display_mode == DISPLAY_TREE_ONLY) {
+
 		file_list_view = true;
 		_update_display_mode();
 	} else {
@@ -716,6 +715,7 @@ void FileSystemDock::_go_to_file_list() {
 		_update_files(false);
 	}
 }
+
 void FileSystemDock::_go_to_tree() {
 
 	file_list_view = false;
@@ -1947,7 +1947,6 @@ void FileSystemDock::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_favorites_pressed"), &FileSystemDock::_favorites_pressed);
 	ClassDB::bind_method(D_METHOD("_show_current_scene_file"), &FileSystemDock::_show_current_scene_file);
 	//ClassDB::bind_method(D_METHOD("_instance_pressed"),&ScenesDock::_instance_pressed);
-	ClassDB::bind_method(D_METHOD("_go_to_file_list"), &FileSystemDock::_go_to_file_list);
 	ClassDB::bind_method(D_METHOD("_tree_item_rmb_pressed"), &FileSystemDock::_tree_item_rmb_pressed);
 
 	ClassDB::bind_method(D_METHOD("_thumbnail_done"), &FileSystemDock::_thumbnail_done);
@@ -2084,7 +2083,7 @@ FileSystemDock::FileSystemDock(EditorNode *p_editor) {
 	split_box->add_child(tree);
 
 	tree->connect("item_edited", this, "_favorite_toggled");
-	tree->connect("item_activated", this, "_go_to_file_list");
+	tree->connect("item_activated", this, "_tree_select_file");
 	tree->connect("cell_selected", this, "_tree_item_selected");
 	tree->connect("item_rmb_selected", this, "_tree_item_rmb_pressed");
 
