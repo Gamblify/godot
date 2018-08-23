@@ -143,6 +143,10 @@ private:
 	ScriptCreateDialog *make_script_dialog_text;
 	CreateDialog *new_resource_dialog;
 
+	bool display_files_in_tree;
+
+	bool always_show_folders;
+
 	class FileOrFolder {
 	public:
 		String path;
@@ -191,7 +195,7 @@ private:
 	void _update_import_dock();
 
 	void _file_selected();
-	void _dir_selected();
+	void _tree_item_selected();
 
 	void _get_all_items_in_dir(EditorFileSystemDirectory *efsd, Vector<String> &files, Vector<String> &folders) const;
 	void _find_remaps(EditorFileSystemDirectory *efsd, const Map<String, String> &renames, Vector<String> &to_remaps) const;
@@ -225,7 +229,7 @@ private:
 	void _show_current_scene_file();
 	void _search_changed(const String &p_text);
 
-	void _dir_rmb_pressed(const Vector2 &p_pos);
+	void _tree_item_rmb_pressed(const Vector2 &p_pos);
 	void _files_list_rmb_select(int p_item, const Vector2 &p_pos);
 	void _rmb_pressed(const Vector2 &p_pos);
 
