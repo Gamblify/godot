@@ -237,7 +237,8 @@ void FileSystemDock::_notification(int p_what) {
 			_update_file_list_display_mode_button();
 			button_file_list_display_mode->connect("pressed", this, "_change_file_display");
 			//file_options->set_icon( get_icon("Tools","ei"));
-			files->connect("item_activated", this, "_select_file");
+			files->connect("item_activated", this, "_file_list_select_file");
+			tree->connect("item_activated", this, "_tree_select_file");
 			button_hist_next->connect("pressed", this, "_fw_history");
 			button_hist_prev->connect("pressed", this, "_bw_history");
 			search_box->set_right_icon(get_icon("Search", ei));
@@ -676,8 +677,8 @@ void FileSystemDock::_update_files(bool p_keep_selection) {
 	}
 }
 
-void FileSystemDock::_select_file(int p_idx) {
-	String fpath = files->get_item_metadata(p_idx);
+void FileSystemDock::_select_file(const String p_path) {
+	String fpath = p_path;
 	if (fpath.ends_with("/")) {
 		if (fpath != "res://") {
 			fpath = fpath.substr(0, fpath.length() - 1);
@@ -690,6 +691,14 @@ void FileSystemDock::_select_file(int p_idx) {
 			editor->load_resource(fpath);
 		}
 	}
+}
+
+void FileSystemDock::_tree_select_file() {
+	_select_file(tree->get_selected()->get_metadata(0));
+}
+
+void FileSystemDock::_file_list_select_file(int p_idx) {
+	_select_file(files->get_item_metadata(p_idx));
 }
 
 void FileSystemDock::_go_to_file_list() {
@@ -1229,7 +1238,7 @@ void FileSystemDock::_file_option(int p_option) {
 		case FILE_OPEN: {
 			for (int i = 0; i < files->get_item_count(); i++) {
 				if (files->is_selected(i)) {
-					_select_file(i);
+					_file_list_select_file(i);
 				}
 			}
 		} break;
@@ -1938,7 +1947,8 @@ void FileSystemDock::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_tree_item_rmb_pressed"), &FileSystemDock::_tree_item_rmb_pressed);
 
 	ClassDB::bind_method(D_METHOD("_thumbnail_done"), &FileSystemDock::_thumbnail_done);
-	ClassDB::bind_method(D_METHOD("_select_file"), &FileSystemDock::_select_file);
+	ClassDB::bind_method(D_METHOD("_file_list_select_file"), &FileSystemDock::_file_list_select_file);
+	ClassDB::bind_method(D_METHOD("_tree_select_file"), &FileSystemDock::_tree_select_file);
 	ClassDB::bind_method(D_METHOD("_go_to_tree"), &FileSystemDock::_go_to_tree);
 	ClassDB::bind_method(D_METHOD("navigate_to_path"), &FileSystemDock::navigate_to_path);
 	ClassDB::bind_method(D_METHOD("_change_file_display"), &FileSystemDock::_change_file_display);

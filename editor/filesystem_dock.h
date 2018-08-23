@@ -190,7 +190,9 @@ private:
 	void _go_to_tree();
 	void _go_to_file_list();
 
-	void _select_file(int p_idx);
+	void _select_file(const String p_path);
+	void _tree_select_file();
+	void _file_list_select_file(int p_idx);
 	void _file_multi_selected(int p_index, bool p_selected);
 	void _update_import_dock();
 
