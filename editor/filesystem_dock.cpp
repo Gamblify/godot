@@ -91,10 +91,7 @@ bool FileSystemDock::_create_tree(TreeItem *p_parent, EditorFileSystemDirectory 
 			TreeItem *file_item = tree->create_item(subdirectory_item);
 			file_item->set_text(0, file_name);
 			file_item->set_icon(0, file_icon);
-			String file_metadata = lpath;
-			if (!lpath.ends_with("/"))
-				file_metadata += "/";
-			file_metadata += file_name;
+			String file_metadata = lpath.plus_file(file_name);
 			file_item->set_metadata(0, file_metadata);
 			if (path == file_metadata) {
 				file_item->select(0);
@@ -278,7 +275,7 @@ void FileSystemDock::_notification(int p_what) {
 			Dictionary dd = get_viewport()->gui_get_drag_data();
 			if (tree->is_visible_in_tree() && dd.has("type")) {
 				if ((String(dd["type"]) == "files") || (String(dd["type"]) == "files_and_dirs") || (String(dd["type"]) == "resource")) {
-					tree->set_drop_mode_flags(Tree::DROP_MODE_ON_ITEM);
+					tree->set_drop_mode_flags(Tree::DROP_MODE_ON_ITEM | Tree::DROP_MODE_INBETWEEN);
 				} else if ((String(dd["type"]) == "favorite")) {
 					tree->set_drop_mode_flags(Tree::DROP_MODE_INBETWEEN);
 				}
@@ -407,6 +404,7 @@ String FileSystemDock::get_current_path() const {
 }
 
 void FileSystemDock::navigate_to_path(const String &p_path) {
+
 	// If the path is a file, do not only go to the directory in the tree, also select the file in the file list.
 	bool is_file;
 	DirAccess *dirAccess = DirAccess::open("res://");
@@ -425,7 +423,7 @@ void FileSystemDock::navigate_to_path(const String &p_path) {
 	_push_to_history();
 
 	if (display_mode == DISPLAY_SPLIT) {
-		call_deferred("_update_tree", true);
+		_update_tree(true);
 		_update_files(false);
 	} else if (!is_file || !display_files_in_tree || display_mode != DISPLAY_TREE_ONLY) {
 		_go_to_file_list();
@@ -696,7 +694,7 @@ void FileSystemDock::_select_file(const String p_path) {
 
 void FileSystemDock::_tree_select_file() {
 	String fpath = tree->get_selected()->get_metadata(0);
-	_select_file(fpath);
+	call_deferred("_select_file", fpath);
 }
 
 void FileSystemDock::_file_list_select_file(int p_idx) {
@@ -1223,6 +1221,7 @@ void FileSystemDock::_move_operation_confirm(const String &p_to_path, bool overw
 }
 
 void FileSystemDock::_file_option(int p_option) {
+
 	switch (p_option) {
 		case FILE_SHOW_IN_EXPLORER: {
 
@@ -1464,12 +1463,24 @@ void FileSystemDock::_folder_option(int p_option) {
 			}
 		} break;
 		case FOLDER_REMOVE: {
-			Vector<String> remove_folders;
+
 			Vector<String> remove_files;
-			String fpath = selected->get_metadata(tree->get_selected_column());
-			if (fpath != "res://") {
-				remove_folders.push_back(fpath);
-				remove_dialog->show(remove_folders, remove_files);
+			Vector<String> remove_folders;
+
+			TreeItem *item = tree->get_selected();
+			if (item) {
+				String fpath = item->get_metadata(0);
+				if (fpath != "res://") {
+					if (fpath.ends_with("/")) {
+						remove_folders.push_back(fpath);
+					} else {
+						remove_files.push_back(fpath);
+					}
+				}
+
+				if (remove_files.size() + remove_folders.size() > 0) {
+					remove_dialog->show(remove_folders, remove_files);
+				}
 			}
 		} break;
 		case FOLDER_NEW_FOLDER: {
@@ -1607,7 +1618,7 @@ bool FileSystemDock::can_drop_data_fw(const Point2 &p_point, const Variant &p_da
 
 	if (drag_data.has("type") && String(drag_data["type"]) == "favorite") {
 
-		//moving favorite around
+		// Moving favorite around
 		TreeItem *ti = tree->get_item_at_position(p_point);
 		if (!ti)
 			return false;
@@ -1629,11 +1640,13 @@ bool FileSystemDock::can_drop_data_fw(const Point2 &p_point, const Variant &p_da
 	}
 
 	if (drag_data.has("type") && String(drag_data["type"]) == "resource") {
+		// Move resources
 		String to_dir = _get_drag_target_folder(p_point, p_from);
 		return !to_dir.empty();
 	}
 
 	if (drag_data.has("type") && (String(drag_data["type"]) == "files" || String(drag_data["type"]) == "files_and_dirs")) {
+		// Move files or dir
 		String to_dir = _get_drag_target_folder(p_point, p_from);
 		if (to_dir.empty())
 			return false;
@@ -1660,8 +1673,7 @@ void FileSystemDock::drop_data_fw(const Point2 &p_point, const Variant &p_data, 
 	Dictionary drag_data = p_data;
 
 	if (drag_data.has("type") && String(drag_data["type"]) == "favorite") {
-
-		//moving favorite around
+		// Moving favorite around
 		TreeItem *ti = tree->get_item_at_position(p_point);
 		if (!ti)
 			return;
@@ -1722,6 +1734,7 @@ void FileSystemDock::drop_data_fw(const Point2 &p_point, const Variant &p_data, 
 	}
 
 	if (drag_data.has("type") && String(drag_data["type"]) == "resource") {
+		// Moving resource
 		Ref<Resource> res = drag_data["resource"];
 		String to_dir = _get_drag_target_folder(p_point, p_from);
 		if (res.is_valid() && !to_dir.empty()) {
@@ -1731,6 +1744,7 @@ void FileSystemDock::drop_data_fw(const Point2 &p_point, const Variant &p_data, 
 	}
 
 	if (drag_data.has("type") && (String(drag_data["type"]) == "files" || String(drag_data["type"]) == "files_and_dirs")) {
+		// Move files
 		String to_dir = _get_drag_target_folder(p_point, p_from);
 		if (!to_dir.empty()) {
 			Vector<String> fnames = drag_data["files"];
@@ -1744,6 +1758,7 @@ void FileSystemDock::drop_data_fw(const Point2 &p_point, const Variant &p_data, 
 }
 
 String FileSystemDock::_get_drag_target_folder(const Point2 &p_point, Control *p_from) const {
+	// In the file list
 	if (p_from == files) {
 		int pos = files->get_item_at_position(p_point, true);
 		if (pos == -1)
@@ -1753,10 +1768,25 @@ String FileSystemDock::_get_drag_target_folder(const Point2 &p_point, Control *p
 		return target.ends_with("/") ? target : path;
 	}
 
+	// In the tree
 	if (p_from == tree) {
 		TreeItem *ti = tree->get_item_at_position(p_point);
-		if (ti && ti != tree->get_root()->get_children())
-			return ti->get_metadata(0);
+		if (ti && ti != tree->get_root()->get_children()) {
+			int section = tree->get_drop_section_at_position(p_point);
+			String fpath = ti->get_metadata(0);
+			if (section == 0) {
+				if (fpath.ends_with("/")) {
+					// We drop on a folder
+					return fpath;
+				}
+			} else if (fpath != "res://") {
+				// We drop between two files
+				if (fpath.ends_with("/")) {
+					fpath = fpath.substr(0, fpath.length() - 1);
+				}
+				return fpath.get_base_dir();
+			}
+		}
 	}
 
 	return String();
@@ -1862,6 +1892,15 @@ void FileSystemDock::select_file(const String &p_file) {
 
 void FileSystemDock::_file_multi_selected(int p_index, bool p_selected) {
 
+	// Set the path to the current focussed item
+	int current = files->get_current();
+	if (current > 0) {
+		path = files->get_item_metadata(current);
+		if (display_mode == DISPLAY_SPLIT)
+			_update_tree(true);
+	}
+
+	// Update the import dock
 	import_dock_needs_update = true;
 	call_deferred("_update_import_dock");
 }
@@ -1883,12 +1922,6 @@ void FileSystemDock::_files_gui_input(Ref<InputEvent> p_event) {
 			_file_option(FILE_RENAME);
 		}
 	}
-}
-
-void FileSystemDock::_file_selected() {
-
-	import_dock_needs_update = true;
-	_update_import_dock();
 }
 
 void FileSystemDock::_update_import_dock() {
@@ -1952,6 +1985,7 @@ void FileSystemDock::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_thumbnail_done"), &FileSystemDock::_thumbnail_done);
 	ClassDB::bind_method(D_METHOD("_file_list_select_file"), &FileSystemDock::_file_list_select_file);
 	ClassDB::bind_method(D_METHOD("_tree_select_file"), &FileSystemDock::_tree_select_file);
+	ClassDB::bind_method(D_METHOD("_select_file"), &FileSystemDock::_select_file);
 	ClassDB::bind_method(D_METHOD("_go_to_tree"), &FileSystemDock::_go_to_tree);
 	ClassDB::bind_method(D_METHOD("navigate_to_path"), &FileSystemDock::navigate_to_path);
 	ClassDB::bind_method(D_METHOD("_change_file_display"), &FileSystemDock::_change_file_display);
@@ -1976,7 +2010,6 @@ void FileSystemDock::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_files_list_rmb_select"), &FileSystemDock::_files_list_rmb_select);
 
 	ClassDB::bind_method(D_METHOD("_preview_invalidated"), &FileSystemDock::_preview_invalidated);
-	ClassDB::bind_method(D_METHOD("_file_selected"), &FileSystemDock::_file_selected);
 	ClassDB::bind_method(D_METHOD("_file_multi_selected"), &FileSystemDock::_file_multi_selected);
 	ClassDB::bind_method(D_METHOD("_update_import_dock"), &FileSystemDock::_update_import_dock);
 	ClassDB::bind_method(D_METHOD("_rmb_pressed"), &FileSystemDock::_rmb_pressed);
@@ -2115,7 +2148,6 @@ FileSystemDock::FileSystemDock(EditorNode *p_editor) {
 	files->set_drag_forwarding(this);
 	files->connect("item_rmb_selected", this, "_files_list_rmb_select");
 	files->connect("gui_input", this, "_files_gui_input");
-	files->connect("item_selected", this, "_file_selected");
 	files->connect("multi_selected", this, "_file_multi_selected");
 	files->connect("rmb_clicked", this, "_rmb_pressed");
 	files->set_allow_rmb_select(true);

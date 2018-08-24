@@ -196,7 +196,6 @@ private:
 	void _file_multi_selected(int p_index, bool p_selected);
 	void _update_import_dock();
 
-	void _file_selected();
 	void _tree_item_selected();
 
 	void _get_all_items_in_dir(EditorFileSystemDirectory *efsd, Vector<String> &files, Vector<String> &folders) const;
