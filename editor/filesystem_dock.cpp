@@ -40,6 +40,17 @@
 #include "project_settings.h"
 #include "scene/main/viewport.h"
 
+Ref<Texture> FileSystemDock::_get_tree_item_icon(EditorFileSystemDirectory *p_dir, int p_idx) {
+	Ref<Texture> file_icon;
+	if (!p_dir->get_file_import_is_valid(p_idx)) {
+		file_icon = get_icon("ImportFail", "EditorIcons");
+	} else {
+		String file_type = p_dir->get_file_type(p_idx);
+		file_icon = (has_icon(file_type, "EditorIcons")) ? get_icon(file_type, "EditorIcons") : get_icon("File", "EditorIcons");
+	}
+	return file_icon;
+}
+
 bool FileSystemDock::_create_tree(TreeItem *p_parent, EditorFileSystemDirectory *p_dir, Vector<String> &uncollapsed_paths) {
 
 	// Create a tree item for the subdirectory
@@ -78,19 +89,10 @@ bool FileSystemDock::_create_tree(TreeItem *p_parent, EditorFileSystemDirectory 
 	if (display_files_in_tree) {
 		for (int i = 0; i < p_dir->get_file_count(); i++) {
 			String file_name = p_dir->get_file(i);
-			String file_type = p_dir->get_file_type(i);
-			bool file_import_valid = p_dir->get_file_import_is_valid(i);
-
-			Ref<Texture> file_icon;
-			if (!file_import_valid) {
-				file_icon = get_icon("ImportFail", "EditorIcons");
-			} else {
-				file_icon = (has_icon(file_type, "EditorIcons")) ? get_icon(file_type, "EditorIcons") : get_icon("File", "EditorIcons");
-			}
 
 			TreeItem *file_item = tree->create_item(subdirectory_item);
 			file_item->set_text(0, file_name);
-			file_item->set_icon(0, file_icon);
+			file_item->set_icon(0, _get_tree_item_icon(p_dir, i));
 			String file_metadata = lpath.plus_file(file_name);
 			file_item->set_metadata(0, file_metadata);
 			if (path == file_metadata) {
@@ -141,19 +143,32 @@ void FileSystemDock::_update_tree(bool keep_collapse_state, bool p_uncollapse_ro
 	favorites->set_selectable(0, false);
 
 	Vector<String> favorite_paths = EditorSettings::get_singleton()->get_favorite_dirs();
-	String res_path = "res://";
-	Ref<Texture> folder_icon = get_icon("Folder", "EditorIcons");
 	for (int i = 0; i < favorite_paths.size(); i++) {
 		String fave = favorite_paths[i];
-		if (!fave.begins_with(res_path))
+		if (!fave.begins_with("res://"))
 			continue;
 
+		Ref<Texture> folder_icon = get_icon("Folder", "EditorIcons");
+
 		TreeItem *ti = tree->create_item(favorites);
-		if (fave == res_path)
+		if (fave == "res://") {
 			ti->set_text(0, "/");
-		else
+			ti->set_icon(0, folder_icon);
+		} else if (fave.ends_with("/")) {
+			ti->set_text(0, fave.substr(0, fave.length() - 1).get_file());
+			ti->set_icon(0, folder_icon);
+		} else {
 			ti->set_text(0, fave.get_file());
-		ti->set_icon(0, folder_icon);
+			int index;
+			EditorFileSystemDirectory *dir = EditorFileSystem::get_singleton()->find_file(fave, &index);
+			if (dir) {
+				ti->set_icon(0, _get_tree_item_icon(dir, index));
+			} else {
+				ti->set_icon(0, get_icon("File", "EditorIcons"));
+			}
+		}
+
+		ti->set_tooltip(0, fave);
 		ti->set_selectable(0, true);
 		ti->set_metadata(0, fave);
 	}
@@ -330,27 +345,43 @@ void FileSystemDock::_notification(int p_what) {
 	}
 }
 
-void FileSystemDock::_tree_item_selected() {
+void FileSystemDock::_tree_multi_selected(Object *p_item, int p_column, bool p_selected) {
+
+	// Check if items are all in favorites
+	bool all_favorites = true;
+	Vector<String> favorites = EditorSettings::get_singleton()->get_favorite_dirs();
+	Vector<String> selected = _tree_get_selected();
+	for (int i = 0; i < selected.size(); i++) {
+		int found = -1;
+		for (int j = 0; j < favorites.size(); j++) {
+			if (favorites[j] == selected[i]) {
+				found = j;
+				break;
+			}
+		}
+
+		if (found < 0) {
+			all_favorites = false;
+			break;
+		}
+	}
+	button_favorite->set_pressed(all_favorites);
+
+	// Return if we don't select something new
+	if (!p_selected)
+		return;
+
 	// Tree item selected
 	TreeItem *sel = tree->get_selected();
 	if (!sel)
 		return;
 	path = sel->get_metadata(0);
 
-	bool found = false;
-	Vector<String> favorites = EditorSettings::get_singleton()->get_favorite_dirs();
-	for (int i = 0; i < favorites.size(); i++) {
-
-		if (favorites[i] == path) {
-			found = true;
-			break;
-		}
-	}
-
-	button_favorite->set_pressed(found);
+	// Set the current path
 	current_path->set_text(path);
 	_push_to_history();
 
+	// Update the file list
 	if (!updating_tree && display_mode == DISPLAY_SPLIT) {
 		_update_files(false);
 	}
@@ -358,26 +389,43 @@ void FileSystemDock::_tree_item_selected() {
 
 void FileSystemDock::_favorites_pressed() {
 
-	TreeItem *sel = tree->get_selected();
-	if (!sel)
+	// Check items in favorites
+	Vector<String> selected = _tree_get_selected(false);
+	if (selected.empty())
 		return;
-	path = sel->get_metadata(0);
 
-	int idx = -1;
+	// Check if items are all in favorites
+	bool all_favorites = true;
+	Vector<String> to_add;
 	Vector<String> favorites = EditorSettings::get_singleton()->get_favorite_dirs();
-	for (int i = 0; i < favorites.size(); i++) {
+	for (int i = 0; i < selected.size(); i++) {
+		int found = -1;
+		for (int j = 0; j < favorites.size(); j++) {
+			if (favorites[j] == selected[i]) {
+				found = j;
+				break;
+			}
+		}
 
-		if (favorites[i] == path) {
-			idx = i;
-			break;
+		if (found < 0) {
+			to_add.push_back(selected[i]);
+			all_favorites = false;
 		}
 	}
 
-	if (idx == -1) {
-		favorites.push_back(path);
+	if (all_favorites) {
+		// Remove all selected
+		for (int i = 0; i < selected.size(); i++) {
+			favorites.erase(selected[i]);
+		}
 	} else {
-		favorites.remove(idx);
+		// Add missing ones
+		for (int i = 0; i < to_add.size(); i++) {
+			favorites.push_back(to_add[i]);
+		}
 	}
+
+	// Replace favorites
 	EditorSettings::get_singleton()->set_favorite_dirs(favorites);
 	_update_tree(true);
 }
@@ -392,12 +440,10 @@ void FileSystemDock::_show_current_scene_file() {
 }
 
 String FileSystemDock::get_selected_path() const {
-
-	TreeItem *sel = tree->get_selected();
-	if (!sel)
-		return "";
-
-	return sel->get_metadata(0);
+	if (path.ends_with("/"))
+		return path;
+	else
+		return path.get_base_dir();
 }
 
 String FileSystemDock::get_current_path() const {
@@ -694,9 +740,11 @@ void FileSystemDock::_select_file(const String p_path) {
 	}
 }
 
-void FileSystemDock::_tree_select_file() {
-	String fpath = tree->get_selected()->get_metadata(0);
-	call_deferred("_select_file", fpath);
+void FileSystemDock::_tree_activate_file() {
+	TreeItem *selected = tree->get_selected();
+	if (selected) {
+		call_deferred("_select_file", selected->get_metadata(0));
+	}
 }
 
 void FileSystemDock::_file_list_activate_file(int p_idx) {
@@ -1226,18 +1274,55 @@ void FileSystemDock::_move_operation_confirm(const String &p_to_path, bool overw
 	}
 }
 
+Vector<String> FileSystemDock::_tree_get_selected(bool remove_self_inclusion) {
+	// Build a list of selected items with the active one at the first position
+	Vector<String> selected_strings;
+
+	TreeItem *active_selected = tree->get_selected();
+	if (active_selected) {
+		selected_strings.push_back(active_selected->get_metadata(0));
+	}
+
+	TreeItem *selected = tree->get_root();
+	selected = tree->get_next_selected(selected);
+	while (selected) {
+		if (selected != active_selected) {
+			selected_strings.push_back(selected->get_metadata(0));
+		}
+		selected = tree->get_next_selected(selected);
+	}
+
+	// Remove paths or files that are included into another
+	if (remove_self_inclusion && selected_strings.size() > 1) {
+		selected_strings.sort();
+		String last_path = "";
+		for (int i = 0; i < selected_strings.size(); i++) {
+			if (last_path != "" && selected_strings[i].begins_with(last_path)) {
+				selected_strings.remove(i);
+				i--;
+			}
+			if (selected_strings[i].ends_with("/")) {
+				last_path = selected_strings[i];
+			}
+		}
+	}
+	return selected_strings;
+}
+
 void FileSystemDock::_tree_rmb_option(int p_option) {
 
-	TreeItem *selected = tree->get_selected();
+	Vector<String> selected_strings = _tree_get_selected();
 
+	// Execute the current option
 	switch (p_option) {
 		case FOLDER_EXPAND_ALL:
 		case FOLDER_COLLAPSE_ALL: {
 			// Expand or collapse the folder
-			if (selected) {
+			if (selected_strings.size() == 1) {
 				bool is_collapsed = (p_option == FOLDER_COLLAPSE_ALL);
+
 				Vector<TreeItem *> needs_check;
-				needs_check.push_back(selected);
+				needs_check.push_back(tree->get_selected());
 
 				while (needs_check.size()) {
 					needs_check[0]->set_collapsed(is_collapsed);
@@ -1253,10 +1338,6 @@ void FileSystemDock::_tree_rmb_option(int p_option) {
 			}
 		} break;
 		default: {
-			Vector<String> selected_strings;
-			if (selected) {
-				selected_strings.push_back(selected->get_metadata(0));
-			}
 			_file_option(p_option, selected_strings);
 		} break;
 	}
@@ -1468,54 +1549,6 @@ void FileSystemDock::_resource_created() const {
 	editor->save_resource_as(current_res, fpath);
 }
 
-void FileSystemDock::_tree_item_rmb_pressed(const Vector2 &p_pos) {
-	folder_options->clear();
-	folder_options->set_size(Size2(1, 1));
-
-	TreeItem *item = tree->get_selected();
-	if (item) {
-		String fpath = item->get_metadata(tree->get_selected_column());
-
-		if (fpath.ends_with("/")) {
-			folder_options->add_item(TTR("Expand all"), FOLDER_EXPAND_ALL);
-			folder_options->add_item(TTR("Collapse all"), FOLDER_COLLAPSE_ALL);
-		} else {
-			bool is_scene = (EditorFileSystem::get_singleton()->get_file_type(fpath) == "PackedScene");
-			if (is_scene) {
-				folder_options->add_item(TTR("Open Scene(s)"), FILE_OPEN);
-				folder_options->add_item(TTR("Instance"), FILE_INSTANCE);
-				folder_options->add_separator();
-			} else {
-				folder_options->add_item(TTR("Open"), FILE_OPEN);
-				folder_options->add_separator();
-			}
-
-			folder_options->add_item(TTR("Edit Dependencies..."), FILE_DEPENDENCIES);
-			folder_options->add_item(TTR("View Owners..."), FILE_OWNERS);
-		}
-
-		folder_options->add_separator();
-		folder_options->add_item(TTR("Copy Path"), FILE_COPY_PATH);
-		if (fpath != "res://") {
-			folder_options->add_item(TTR("Rename..."), FILE_RENAME);
-			folder_options->add_item(TTR("Move To..."), FILE_MOVE);
-			folder_options->add_item(TTR("Delete"), FILE_REMOVE);
-		}
-		folder_options->add_separator();
-		folder_options->add_item(TTR("New Folder..."), FILE_NEW_FOLDER);
-		folder_options->add_item(TTR("Open In File Manager"), FILE_SHOW_IN_EXPLORER);
-
-		if (display_files_in_tree && !fpath.ends_with("/")) {
-			folder_options->add_separator();
-			folder_options->add_item(TTR("New Folder..."), FILE_NEW_FOLDER);
-			folder_options->add_item(TTR("New Script..."), FILE_NEW_SCRIPT);
-			folder_options->add_item(TTR("New Resource..."), FILE_NEW_RESOURCE);
-		}
-	}
-	folder_options->set_position(tree->get_global_position() + p_pos);
-	folder_options->popup();
-}
-
 void FileSystemDock::_search_changed(const String &p_text) {
 
 	if (file_list_vb->is_visible())
@@ -1554,34 +1587,43 @@ void FileSystemDock::set_file_list_display_mode(int p_mode) {
 }
 
 Variant FileSystemDock::get_drag_data_fw(const Point2 &p_point, Control *p_from) {
-	bool is_favorite = false;
+	bool all_favorites = true;
+	bool all_not_favorites = true;
+
 	Vector<String> paths;
 
 	if (p_from == tree) {
-		TreeItem *selected = tree->get_selected();
-		if (!selected)
-			return Variant();
-
-		String item_string = selected->get_metadata(0);
-		if (item_string == String())
-			return Variant();
-
-		paths.push_back(item_string);
-		is_favorite = selected->get_parent() != NULL && tree->get_root()->get_children() == selected->get_parent();
-
+		// Check if the first selected is in favorite
+		TreeItem *selected = tree->get_next_selected(tree->get_root());
+		while (selected) {
+			bool is_favorite = selected->get_parent() != NULL && tree->get_root()->get_children() == selected->get_parent();
+			all_favorites &= is_favorite;
+			all_not_favorites &= !is_favorite;
+			selected = tree->get_next_selected(selected);
+		}
+		if (all_favorites) {
+			paths = _tree_get_selected(false);
+		} else {
+			paths = _tree_get_selected();
+		}
 	} else if (p_from == files) {
 		for (int i = 0; i < files->get_item_count(); i++) {
 			if (files->is_selected(i)) {
 				paths.push_back(files->get_item_metadata(i));
 			}
 		}
+		all_favorites = false;
+		all_not_favorites = true;
 	}
 
 	if (paths.empty())
 		return Variant();
 
+	if (!all_favorites && !all_not_favorites)
+		return Variant();
+
 	Dictionary drag_data = EditorNode::get_singleton()->drag_files_and_dirs(paths, p_from);
-	if (is_favorite) {
+	if (all_favorites) {
 		drag_data["type"] = "favorite";
 	}
 	return drag_data;
@@ -1598,17 +1640,19 @@ bool FileSystemDock::can_drop_data_fw(const Point2 &p_point, const Variant &p_da
 		if (!ti)
 			return false;
 
-		int what = tree->get_drop_section_at_position(p_point);
+		int drop_section = tree->get_drop_section_at_position(p_point);
+		TreeItem *favorites_item = tree->get_root()->get_children();
+		;
+		TreeItem *resources_item = favorites_item->get_next();
 
-		if (ti == tree->get_root()->get_children()) {
-			return (what == 1); //the parent, first fav
+		if (ti == favorites_item) {
+			return (drop_section == 1); // The parent, first fav
 		}
-		if (ti->get_parent() && tree->get_root()->get_children() == ti->get_parent()) {
-			return true; // a favorite
+		if (ti->get_parent() && favorites_item == ti->get_parent()) {
+			return true; // A favorite
 		}
-
-		if (ti == tree->get_root()->get_children()->get_next()) {
-			return (what == -1); //the tree, last fav
+		if (ti == resources_item) {
+			return (drop_section == -1); // The tree, last fav
 		}
 
 		return false;
@@ -1647,60 +1691,55 @@ void FileSystemDock::drop_data_fw(const Point2 &p_point, const Variant &p_data, 
 		return;
 	Dictionary drag_data = p_data;
 
+	Vector<String> dirs = EditorSettings::get_singleton()->get_favorite_dirs();
+
 	if (drag_data.has("type") && String(drag_data["type"]) == "favorite") {
 		// Moving favorite around
 		TreeItem *ti = tree->get_item_at_position(p_point);
 		if (!ti)
 			return;
+		int drop_section = tree->get_drop_section_at_position(p_point);
 
+		int drop_position;
 		Vector<String> files = drag_data["files"];
+		TreeItem *favorites_item = tree->get_root()->get_children();
+		;
+		TreeItem *resources_item = favorites_item->get_next();
 
-		ERR_FAIL_COND(files.size() != 1);
-
-		String swap = files[0];
-		if (swap != "res://" && swap.ends_with("/")) {
-			swap = swap.substr(0, swap.length() - 1);
-		}
-
-		int what = tree->get_drop_section_at_position(p_point);
-
-		TreeItem *swap_item = NULL;
-
-		if (ti == tree->get_root()->get_children()) {
-			swap_item = tree->get_root()->get_children()->get_children();
-
-		} else if (ti->get_parent() && tree->get_root()->get_children() == ti->get_parent()) {
-			if (what == -1) {
-				swap_item = ti;
-			} else {
-				swap_item = ti->get_next();
-			}
-		}
-
-		String swap_with;
-
-		if (swap_item) {
-			swap_with = swap_item->get_metadata(0);
-			if (swap_with != "res://" && swap_with.ends_with("/")) {
-				swap_with = swap_with.substr(0, swap_with.length() - 1);
-			}
-		}
-
-		if (swap == swap_with)
-			return;
-
-		Vector<String> dirs = EditorSettings::get_singleton()->get_favorite_dirs();
-
-		ERR_FAIL_COND(dirs.find(swap) == -1);
-		ERR_FAIL_COND(swap_with != String() && dirs.find(swap_with) == -1);
-
-		dirs.erase(swap);
-
-		if (swap_with == String()) {
-			dirs.push_back(swap);
+		if (ti == favorites_item) {
+			// Drop on the favorite folder
+			drop_position = 0;
+		} else if (ti == resources_item) {
+			// Drop on the resouce item
+			drop_position = dirs.size();
 		} else {
-			int idx = dirs.find(swap_with);
-			dirs.insert(idx, swap);
+			// Drop in the list
+			drop_position = dirs.find(ti->get_metadata(0));
+			if (drop_section == 1) {
+				drop_position++;
+			}
+		}
+
+		// Remove dragged favorites
+		Vector<int> to_remove;
+		int offset = 0;
+		for (int i = 0; i < files.size(); i++) {
+			int to_remove_pos = dirs.find(files[i]);
+			to_remove.push_back(to_remove_pos);
+			if (to_remove_pos <= drop_position) {
+				offset++;
+			}
+		}
+		drop_position -= offset;
+		to_remove.sort();
+		for (int i = 0; i < to_remove.size(); i++) {
+			dirs.remove(to_remove[i] - i);
+		}
+
+		// Re-add them at the right position
+		for (int i = 0; i < files.size(); i++) {
+			dirs.insert(drop_position, files[i]);
+			drop_position++;
 		}
 
 		EditorSettings::get_singleton()->set_favorite_dirs(dirs);
@@ -1754,12 +1793,17 @@ String FileSystemDock::_get_drag_target_folder(const Point2 &p_point, Control *p
 					// We drop on a folder
 					return fpath;
 				}
-			} else if (fpath != "res://") {
-				// We drop between two files
-				if (fpath.ends_with("/")) {
-					fpath = fpath.substr(0, fpath.length() - 1);
+			} else {
+				if (ti->get_parent() != tree->get_root()->get_children()) {
+					// Not in the favorite section
+					if (fpath != "res://") {
+						// We drop between two files
+						if (fpath.ends_with("/")) {
+							fpath = fpath.substr(0, fpath.length() - 1);
+						}
+						return fpath.get_base_dir();
+					}
 				}
-				return fpath.get_base_dir();
 			}
 		}
 	}
@@ -1767,14 +1811,9 @@ String FileSystemDock::_get_drag_target_folder(const Point2 &p_point, Control *p
 	return String();
 }
 
-void FileSystemDock::_file_list_rmb_select(int p_item, const Vector2 &p_pos) {
-
-	//Right clicking ".." should clear current selection
-	if (files->get_item_text(p_item) == "..") {
-		for (int i = 0; i < files->get_item_count(); i++) {
-			files->unselect(i);
-		}
-	}
+void FileSystemDock::_file_and_folders_fill_popup(PopupMenu *p_popup, Vector<String> p_paths) {
+	// Add options for files and folders
+	ERR_FAIL_COND(p_paths.empty())
 
 	Vector<String> filenames;
 	Vector<String> foldernames;
@@ -1782,12 +1821,8 @@ void FileSystemDock::_file_list_rmb_select(int p_item, const Vector2 &p_pos) {
 	bool all_files = true;
 	bool all_files_scenes = true;
 	bool all_folders = true;
-	for (int i = 0; i < files->get_item_count(); i++) {
-		if (!files->is_selected(i)) {
-			continue;
-		}
-
-		String fpath = files->get_item_metadata(i);
+	for (int i = 0; i < p_paths.size(); i++) {
+		String fpath = p_paths[i];
 		if (fpath.ends_with("/")) {
 			foldernames.push_back(fpath);
 			all_files = false;
@@ -1798,57 +1833,98 @@ void FileSystemDock::_file_list_rmb_select(int p_item, const Vector2 &p_pos) {
 		}
 	}
 
-	file_options->clear();
-	file_options->set_size(Size2(1, 1));
 	if (all_files) {
 
 		if (all_files_scenes && filenames.size() >= 1) {
-			file_options->add_item(TTR("Open Scene(s)"), FILE_OPEN);
-			file_options->add_item(TTR("Instance"), FILE_INSTANCE);
-			file_options->add_separator();
+			p_popup->add_item(TTR("Open Scene(s)"), FILE_OPEN);
+			p_popup->add_item(TTR("Instance"), FILE_INSTANCE);
+			p_popup->add_separator();
 		}
 
 		if (!all_files_scenes && filenames.size() == 1) {
-			file_options->add_item(TTR("Open"), FILE_OPEN);
-			file_options->add_separator();
+			p_popup->add_item(TTR("Open"), FILE_OPEN);
+			p_popup->add_separator();
 		}
 
 		if (filenames.size() == 1) {
-			file_options->add_item(TTR("Edit Dependencies..."), FILE_DEPENDENCIES);
-			file_options->add_item(TTR("View Owners..."), FILE_OWNERS);
-			file_options->add_separator();
+			p_popup->add_item(TTR("Edit Dependencies..."), FILE_DEPENDENCIES);
+			p_popup->add_item(TTR("View Owners..."), FILE_OWNERS);
+			p_popup->add_separator();
 		}
 
 	} else if (all_folders && foldernames.size() > 0) {
-		file_options->add_item(TTR("Open"), FILE_OPEN);
-		file_options->add_separator();
+		p_popup->add_item(TTR("Open"), FILE_OPEN);
+		p_popup->add_separator();
 	}
 
-	int num_items = filenames.size() + foldernames.size();
-	if (num_items >= 1) {
-		if (num_items == 1) {
-			file_options->add_item(TTR("Copy Path"), FILE_COPY_PATH);
-			file_options->add_item(TTR("Rename..."), FILE_RENAME);
-			file_options->add_item(TTR("Duplicate..."), FILE_DUPLICATE);
-		}
-		file_options->add_item(TTR("Move To..."), FILE_MOVE);
-		file_options->add_item(TTR("Delete"), FILE_REMOVE);
-		file_options->add_separator();
+	if (p_paths.size() == 1) {
+		p_popup->add_item(TTR("Copy Path"), FILE_COPY_PATH);
+		p_popup->add_item(TTR("Rename..."), FILE_RENAME);
+		p_popup->add_item(TTR("Duplicate..."), FILE_DUPLICATE);
 	}
 
-	file_options->add_item(TTR("New Folder..."), FILE_NEW_FOLDER);
-	file_options->add_item(TTR("New Script..."), FILE_NEW_SCRIPT);
-	file_options->add_item(TTR("New Resource..."), FILE_NEW_RESOURCE);
+	p_popup->add_item(TTR("Move To..."), FILE_MOVE);
+	p_popup->add_item(TTR("Delete"), FILE_REMOVE);
 
-	String fpath = files->get_item_metadata(p_item);
-	String item_text = fpath.ends_with("/") ? TTR("Open In File Manager") : TTR("Show In File Manager");
-	file_options->add_item(item_text, FILE_SHOW_IN_EXPLORER);
+	if (p_paths.size() == 1) {
+		p_popup->add_separator();
+		p_popup->add_item(TTR("New Folder..."), FILE_NEW_FOLDER);
+		p_popup->add_item(TTR("New Script..."), FILE_NEW_SCRIPT);
+		p_popup->add_item(TTR("New Resource..."), FILE_NEW_RESOURCE);
 
-	file_options->set_position(files->get_global_position() + p_pos);
-	file_options->popup();
+		String fpath = p_paths[0];
+		String item_text = fpath.ends_with("/") ? TTR("Open In File Manager") : TTR("Show In File Manager");
+		p_popup->add_item(item_text, FILE_SHOW_IN_EXPLORER);
+	}
 }
 
-void FileSystemDock::_rmb_pressed(const Vector2 &p_pos) {
+void FileSystemDock::_tree_rmb_select(const Vector2 &p_pos) {
+	// Right click is pressed in the tree
+	Vector<String> paths = _tree_get_selected();
+
+	if (paths.size() == 1) {
+		if (paths[0].ends_with("/")) {
+			folder_options->add_item(TTR("Expand all"), FOLDER_EXPAND_ALL);
+			folder_options->add_item(TTR("Collapse all"), FOLDER_COLLAPSE_ALL);
+			folder_options->add_separator();
+		}
+	}
+
+	// Popup
+	if (!paths.empty()) {
+		folder_options->clear();
+		folder_options->set_size(Size2(1, 1));
+		_file_and_folders_fill_popup(folder_options, paths);
+		folder_options->set_position(tree->get_global_position() + p_pos);
+		folder_options->popup();
+	}
+}
+
+void FileSystemDock::_file_list_rmb_select(int p_item, const Vector2 &p_pos) {
+	// Right click is pressed in the file list
+	Vector<String> paths;
+	for (int i = 0; i < files->get_item_count(); i++) {
+		if (!files->is_selected(i))
+			continue;
+		if (files->get_item_text(p_item) == "..") {
+			files->unselect(i);
+			continue;
+		}
+		paths.push_back(files->get_item_metadata(i));
+	}
+
+	// Popup
+	if (!paths.empty()) {
+		file_options->clear();
+		file_options->set_size(Size2(1, 1));
+		_file_and_folders_fill_popup(file_options, paths);
+		file_options->set_position(files->get_global_position() + p_pos);
+		file_options->popup();
+	}
+}
+
+void FileSystemDock::_file_list_rmb_pressed(const Vector2 &p_pos) {
+	// Right click on empty space for file list
 	file_options->clear();
 	file_options->set_size(Size2(1, 1));
 
@@ -1959,11 +2035,17 @@ void FileSystemDock::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_favorites_pressed"), &FileSystemDock::_favorites_pressed);
 	ClassDB::bind_method(D_METHOD("_show_current_scene_file"), &FileSystemDock::_show_current_scene_file);
 	//ClassDB::bind_method(D_METHOD("_instance_pressed"),&ScenesDock::_instance_pressed);
-	ClassDB::bind_method(D_METHOD("_tree_item_rmb_pressed"), &FileSystemDock::_tree_item_rmb_pressed);
+
+	ClassDB::bind_method(D_METHOD("_tree_rmb_option", "option"), &FileSystemDock::_tree_rmb_option);
+	ClassDB::bind_method(D_METHOD("_file_list_rmb_option", "option"), &FileSystemDock::_file_list_rmb_option);
+
+	ClassDB::bind_method(D_METHOD("_tree_rmb_select"), &FileSystemDock::_tree_rmb_select);
+	ClassDB::bind_method(D_METHOD("_file_list_rmb_select"), &FileSystemDock::_file_list_rmb_select);
+	ClassDB::bind_method(D_METHOD("_file_list_rmb_pressed"), &FileSystemDock::_file_list_rmb_pressed);
 
 	ClassDB::bind_method(D_METHOD("_thumbnail_done"), &FileSystemDock::_thumbnail_done);
 	ClassDB::bind_method(D_METHOD("_file_list_activate_file"), &FileSystemDock::_file_list_activate_file);
-	ClassDB::bind_method(D_METHOD("_tree_select_file"), &FileSystemDock::_tree_select_file);
+	ClassDB::bind_method(D_METHOD("_tree_activate_file"), &FileSystemDock::_tree_activate_file);
 	ClassDB::bind_method(D_METHOD("_select_file"), &FileSystemDock::_select_file);
 	ClassDB::bind_method(D_METHOD("_go_to_tree"), &FileSystemDock::_go_to_tree);
 	ClassDB::bind_method(D_METHOD("navigate_to_path"), &FileSystemDock::navigate_to_path);
@@ -1971,9 +2053,7 @@ void FileSystemDock::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_fw_history"), &FileSystemDock::_fw_history);
 	ClassDB::bind_method(D_METHOD("_bw_history"), &FileSystemDock::_bw_history);
 	ClassDB::bind_method(D_METHOD("_fs_changed"), &FileSystemDock::_fs_changed);
-	ClassDB::bind_method(D_METHOD("_tree_item_selected"), &FileSystemDock::_tree_item_selected);
-	ClassDB::bind_method(D_METHOD("_tree_rmb_option", "option"), &FileSystemDock::_tree_rmb_option);
-	ClassDB::bind_method(D_METHOD("_file_list_rmb_option", "option"), &FileSystemDock::_file_list_rmb_option);
+	ClassDB::bind_method(D_METHOD("_tree_multi_selected"), &FileSystemDock::_tree_multi_selected);
 	ClassDB::bind_method(D_METHOD("_make_dir_confirm"), &FileSystemDock::_make_dir_confirm);
 	ClassDB::bind_method(D_METHOD("_resource_created"), &FileSystemDock::_resource_created);
 	ClassDB::bind_method(D_METHOD("_move_operation_confirm", "to_path", "overwrite"), &FileSystemDock::_move_operation_confirm, DEFVAL(false));
@@ -1986,12 +2066,10 @@ void FileSystemDock::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_drag_data_fw"), &FileSystemDock::get_drag_data_fw);
 	ClassDB::bind_method(D_METHOD("can_drop_data_fw"), &FileSystemDock::can_drop_data_fw);
 	ClassDB::bind_method(D_METHOD("drop_data_fw"), &FileSystemDock::drop_data_fw);
-	ClassDB::bind_method(D_METHOD("_files_list_rmb_select"), &FileSystemDock::_file_list_rmb_select);
 
 	ClassDB::bind_method(D_METHOD("_preview_invalidated"), &FileSystemDock::_preview_invalidated);
 	ClassDB::bind_method(D_METHOD("_file_multi_selected"), &FileSystemDock::_file_multi_selected);
 	ClassDB::bind_method(D_METHOD("_update_import_dock"), &FileSystemDock::_update_import_dock);
-	ClassDB::bind_method(D_METHOD("_rmb_pressed"), &FileSystemDock::_rmb_pressed);
 
 	ADD_SIGNAL(MethodInfo("instance", PropertyInfo(Variant::POOL_STRING_ARRAY, "files")));
 	ADD_SIGNAL(MethodInfo("open"));
@@ -2091,13 +2169,14 @@ FileSystemDock::FileSystemDock(EditorNode *p_editor) {
 	tree->set_hide_root(true);
 	tree->set_drag_forwarding(this);
 	tree->set_allow_rmb_select(true);
+	tree->set_select_mode(Tree::SELECT_MULTI);
 	tree->set_custom_minimum_size(Size2(0, 200 * EDSCALE));
 	split_box->add_child(tree);
 
 	tree->connect("item_edited", this, "_favorite_toggled");
-	tree->connect("item_activated", this, "_tree_select_file");
-	tree->connect("cell_selected", this, "_tree_item_selected");
-	tree->connect("item_rmb_selected", this, "_tree_item_rmb_pressed");
+	tree->connect("item_activated", this, "_tree_activate_file");
+	tree->connect("multi_selected", this, "_tree_multi_selected");
+	tree->connect("item_rmb_selected", this, "_tree_rmb_select");
 
 	file_list_vb = memnew(VBoxContainer);
 	file_list_vb->set_v_size_flags(SIZE_EXPAND_FILL);
@@ -2125,10 +2204,10 @@ FileSystemDock::FileSystemDock(EditorNode *p_editor) {
 	files->set_v_size_flags(SIZE_EXPAND_FILL);
 	files->set_select_mode(ItemList::SELECT_MULTI);
 	files->set_drag_forwarding(this);
-	files->connect("item_rmb_selected", this, "_files_list_rmb_select");
+	files->connect("item_rmb_selected", this, "_file_list_rmb_select");
 	files->connect("gui_input", this, "_files_gui_input");
 	files->connect("multi_selected", this, "_file_multi_selected");
-	files->connect("rmb_clicked", this, "_rmb_pressed");
+	files->connect("rmb_clicked", this, "_file_list_rmb_pressed");
 	files->set_allow_rmb_select(true);
 	file_list_vb->add_child(files);
 
