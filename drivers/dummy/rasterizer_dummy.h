@@ -189,6 +189,9 @@ public:
 		t->image->blit_rect(p_image, Rect2(src_x, src_y, src_w, src_h), Vector2(dst_x, dst_y));
 	}
 
+	void texture_save_png(RID p_texture, const String & p_path) {
+	}
+
 	Ref<Image> texture_get_data(RID p_texture, int p_level) const {
 		DummyTexture *t = texture_owner.getornull(p_texture);
 		ERR_FAIL_COND_V(!t, Ref<Image>());

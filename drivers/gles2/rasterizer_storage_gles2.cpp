@@ -684,6 +684,10 @@ Ref<Image> RasterizerStorageGLES2::texture_get_data(RID p_texture, int p_layer) 
 #endif
 }
 
+void RasterizerStorageGLES2::texture_save_png(RID p_texture, const String &p_path) {
+    Texture *texture = texture_owner.getornull(p_texture);
+}
+
 void RasterizerStorageGLES2::texture_set_flags(RID p_texture, uint32_t p_flags) {
 
 	Texture *texture = texture_owner.getornull(p_texture);

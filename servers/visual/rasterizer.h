@@ -194,6 +194,7 @@ public:
 			int p_level = 0) = 0;
 
 	virtual Ref<Image> texture_get_data(RID p_texture, int p_level = 0) const = 0;
+	virtual void texture_save_png(RID p_texture, const String &p_path) = 0;
 	virtual void texture_set_flags(RID p_texture, uint32_t p_flags) = 0;
 	virtual uint32_t texture_get_flags(RID p_texture) const = 0;
 	virtual Image::Format texture_get_format(RID p_texture) const = 0;

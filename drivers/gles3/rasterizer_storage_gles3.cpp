@@ -33,6 +33,10 @@
 #include "core/project_settings.h"
 #include "rasterizer_canvas_gles3.h"
 #include "rasterizer_scene_gles3.h"
+#include "core/os/file_access.h"
+
+#include <png.h>
+#include <thread>
 
 /* TEXTURE API */
 
@@ -1202,6 +1206,175 @@ Ref<Image> RasterizerStorageGLES3::texture_get_data(RID p_texture, int p_layer) 
 
 	return Ref<Image>(img);
 #endif
+}
+
+// Mostly copied from resource_save_png.cpp (save_image)
+static void _write_png_data(png_structp png_ptr, png_bytep data, png_size_t p_length) {
+
+	FileAccess *f = (FileAccess *)png_get_io_ptr(png_ptr);
+	f->store_buffer((const uint8_t *)data, p_length);
+}
+
+void _save_screenshot(PoolVector<uint8_t> data, png_structp png_ptr, png_infop info_ptr, png_bytep *row_pointers, FileAccess *f) {
+    png_write_image(png_ptr, row_pointers);
+
+    memfree(row_pointers);
+
+    /* end write */
+    if (setjmp(png_jmpbuf(png_ptr))) {
+            memdelete(f);
+            printf("ERR_CANT_OPEN");
+            return;
+    }
+
+    png_write_end(png_ptr, NULL);
+    memdelete(f);
+
+    /* cleanup heap allocation */
+    png_destroy_write_struct(&png_ptr, &info_ptr);
+}
+
+void RasterizerStorageGLES3::texture_save_png(RID p_texture, const String &p_path) {
+//    printf("Attempting png save - GLES3\n");
+    Texture *texture = texture_owner.get(p_texture);
+    if (!texture) {
+        printf("startError\n");
+        return;
+    }
+    if (!(texture->active)) {
+        printf("NotActive\n");
+        return;
+    }
+//    if (texture->data_size == 0) {
+//        printf("sizeZero\n");
+//        return;
+//    }
+    
+    png_structp png_ptr;
+    png_infop info_ptr;
+    png_bytep *row_pointers;
+
+    /* initialize stuff */
+    png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+
+    if (!png_ptr) {
+        printf("ERR_CANT_CREATE\n");
+        return;
+    }
+
+    info_ptr = png_create_info_struct(png_ptr);
+
+    if (!info_ptr) {
+        printf("ERR_CANT_CREATE\n");
+        return;
+    }
+
+    if (setjmp(png_jmpbuf(png_ptr))) {
+        printf("ERR_CANT_OPEN\n");
+        return;
+    }
+
+    Error err;
+    FileAccess *f = FileAccess::open(p_path, FileAccess::WRITE, &err);
+    if (err) {
+            printf("error");
+            return;
+    }
+
+    png_set_write_fn(png_ptr, f, _write_png_data, NULL);
+    
+    /* write header */
+    if (setjmp(png_jmpbuf(png_ptr))) {
+            printf("Could not open");
+            return;
+    }
+
+    int pngf = PNG_COLOR_TYPE_RGBA;
+    int cs = 4;
+
+    int w = texture->alloc_width;
+    int h = texture->alloc_height;
+//    printf("width: %d", w);
+//    printf(" height: %d \n", h);
+    png_set_IHDR(png_ptr, info_ptr, w, h,
+                    8, pngf, PNG_INTERLACE_NONE,
+                    PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
+
+    png_write_info(png_ptr, info_ptr);
+
+    /* get data (taken from get_data function (only GL for now)) */
+    PoolVector<uint8_t> data;
+    
+    Image::Format real_format;
+    GLenum gl_format;
+    GLenum gl_internal_format;
+    GLenum gl_type;
+    bool compressed;
+    bool srgb;
+    _get_gl_image_and_format(Ref<Image>(), texture->format, texture->flags, real_format, gl_format, gl_internal_format, gl_type, compressed, srgb);
+
+    int data_size = Image::get_image_data_size(texture->alloc_width, texture->alloc_height, Image::FORMAT_RGBA8, false);
+//    printf("data_size: %d", data_size);
+//    printf(" w*h*cs: %d\n", w*h*cs);
+
+    data.resize(data_size*2); //add some memory at the end, just in case for buggy drivers
+    PoolVector<uint8_t>::Write wb = data.write();
+    
+#ifdef GLES_OVER_GL
+//    printf("GLES_OVER_GL\n");
+    glActiveTexture(GL_TEXTURE0);
+
+    glBindTexture(texture->target, texture->tex_id);
+
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+
+    if (texture->mipmaps > 1) {
+        printf("Warning: saving first and disregarding all other mipmaps");
+    }
+//    printf("mipmaps %d\n", texture->mipmaps);
+    
+    if (texture->compressed) {
+//        printf("Compressed texture");
+        glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        glGetCompressedTexImage(texture->target, 0, &wb[0]);
+    } else {
+//        printf("Uncompressed texture");
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glGetTexImage(texture->target, 0, GL_RGBA, GL_UNSIGNED_BYTE, &wb[0]);
+    }
+
+    if (texture->gl_internal_format_cache == GL_RGB10_A2) {
+            printf("Warning Unsupported GL_RGB10_A2\n");
+    }
+
+    wb = PoolVector<uint8_t>::Write();
+
+    data.resize(data_size);
+#else
+    printf("GL! (currently unsupported)\n");
+    return;
+#endif
+
+    /* write bytes */
+    if (setjmp(png_jmpbuf(png_ptr))) {
+            memdelete(f);
+            printf("Could not open");
+            return;
+    }
+
+    PoolVector<uint8_t>::Read r = data.read();
+//    for (int i = 0; i<20;i++) {
+//        uint8_t test = (uint8_t) r[i];
+//        printf(" %d", test);
+//    }
+
+    row_pointers = (png_bytep *)memalloc(sizeof(png_bytep) * h);
+    for (int i = 0; i < h; i++) {
+            row_pointers[i] = (png_bytep)&r[i * w * cs];
+    }
+    
+    std::thread screenshot_io_thread (_save_screenshot, data, png_ptr, info_ptr, row_pointers, f);
+    screenshot_io_thread.detach();
 }
 
 void RasterizerStorageGLES3::texture_set_flags(RID p_texture, uint32_t p_flags) {

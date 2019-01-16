@@ -86,6 +86,7 @@ public:
 	FUNC3(texture_set_data, RID, const Ref<Image> &, int)
 	FUNC10(texture_set_data_partial, RID, const Ref<Image> &, int, int, int, int, int, int, int, int)
 	FUNC2RC(Ref<Image>, texture_get_data, RID, int)
+	FUNC2(texture_save_png, RID, const String &)
 	FUNC2(texture_set_flags, RID, uint32_t)
 	FUNC1RC(uint32_t, texture_get_flags, RID)
 	FUNC1RC(Image::Format, texture_get_format, RID)
