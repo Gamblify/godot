@@ -32,6 +32,8 @@
 #define RASTERIZERSTORAGEGLES3_H
 
 #include "core/self_list.h"
+#include "core/os/file_access.h"
+#include "core/os/thread.h"
 #include "servers/visual/rasterizer.h"
 #include "servers/visual/shader_language.h"
 #include "shader_compiler_gles3.h"
@@ -42,6 +44,8 @@
 #include "shaders/copy.glsl.gen.h"
 #include "shaders/cubemap_filter.glsl.gen.h"
 #include "shaders/particles.glsl.gen.h"
+
+#include <png.h>
 
 // WebGL 2.0 has no MapBufferRange/UnmapBuffer, but offers a non-ES style BufferSubData API instead.
 #ifdef __EMSCRIPTEN__
@@ -242,6 +246,14 @@ public:
 	/* TEXTURE API */
 
 	struct RenderTarget;
+
+	struct ScreenshotSaveData {
+		PoolVector<uint8_t> data;
+		png_structp png_ptr;
+		png_infop info_ptr;
+		png_bytep *row_pointers;
+		FileAccess *f;
+	};
 
 	struct Texture : public RID_Data {
 

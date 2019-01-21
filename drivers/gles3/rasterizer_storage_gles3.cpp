@@ -35,9 +35,6 @@
 #include "rasterizer_scene_gles3.h"
 #include "core/os/file_access.h"
 
-#include <png.h>
-#include <thread>
-
 /* TEXTURE API */
 
 #define _EXT_COMPRESSED_RGB_PVRTC_4BPPV1_IMG 0x8C00
@@ -1215,23 +1212,26 @@ static void _write_png_data(png_structp png_ptr, png_bytep data, png_size_t p_le
 	f->store_buffer((const uint8_t *)data, p_length);
 }
 
-void _save_screenshot(PoolVector<uint8_t> data, png_structp png_ptr, png_infop info_ptr, png_bytep *row_pointers, FileAccess *f) {
-    png_write_image(png_ptr, row_pointers);
+void _save_screenshot(void* _data_p) {
+    RasterizerStorageGLES3::ScreenshotSaveData *data_p = reinterpret_cast<RasterizerStorageGLES3::ScreenshotSaveData *>(_data_p);
+    png_write_image(data_p->png_ptr, data_p->row_pointers);
 
-    memfree(row_pointers);
+    memfree(data_p->row_pointers);
 
     /* end write */
-    if (setjmp(png_jmpbuf(png_ptr))) {
-            memdelete(f);
+    if (setjmp(png_jmpbuf(data_p->png_ptr))) {
+            memdelete(data_p->f);
             printf("ERR_CANT_OPEN");
             return;
     }
 
-    png_write_end(png_ptr, NULL);
-    memdelete(f);
+    png_write_end(data_p->png_ptr, NULL);
+    memdelete(data_p->f);
 
     /* cleanup heap allocation */
-    png_destroy_write_struct(&png_ptr, &info_ptr);
+    png_destroy_write_struct(&data_p->png_ptr, &data_p->info_ptr);
+    
+    memdelete(data_p);
 }
 
 void RasterizerStorageGLES3::texture_save_png(RID p_texture, const String &p_path) {
@@ -1373,8 +1373,14 @@ void RasterizerStorageGLES3::texture_save_png(RID p_texture, const String &p_pat
             row_pointers[i] = (png_bytep)&r[i * w * cs];
     }
     
-    std::thread screenshot_io_thread (_save_screenshot, data, png_ptr, info_ptr, row_pointers, f);
-    screenshot_io_thread.detach();
+    ScreenshotSaveData* screenshot_data = memnew(ScreenshotSaveData);
+    screenshot_data->data = data;
+    screenshot_data->png_ptr = png_ptr;
+    screenshot_data->info_ptr = info_ptr;
+    screenshot_data->row_pointers = row_pointers;
+    screenshot_data->f = f;
+    
+    Thread::create(_save_screenshot, screenshot_data);
 }
 
 void RasterizerStorageGLES3::texture_set_flags(RID p_texture, uint32_t p_flags) {
