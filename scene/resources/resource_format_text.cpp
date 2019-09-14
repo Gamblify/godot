@@ -389,10 +389,46 @@ Ref<PackedScene> ResourceInteractiveLoaderText::_parse_node_tag(VariantParser::R
 	return packed_scene;
 }
 
+Error ResourceInteractiveLoaderText::_poll_subresource() {
+	error = subscene_loader->poll();
+	if (error != ERR_FILE_EOF) {
+		resource_current++;
+		return error;
+	}
+
+	RES res = subscene_loader->get_resource();
+	subscene_loader.unref();
+
+	resource_cache.push_back(res);
+
+	String path = next_tag.fields["path"];
+	String type = next_tag.fields["type"];
+	int index = next_tag.fields["id"];
+
+	ExtResource er;
+	er.path = path;
+	er.type = type;
+	ext_resources[index] = er;
+//	WARN_PRINT(String("Loading ext scene ended: " + er.path).ascii().get_data());
+
+	error = VariantParser::parse_tag(&stream, lines, error_text, next_tag, &rp);
+
+	if (error) {
+		_printerr();
+	}
+
+	resource_current++;
+	return error;
+}
+
 Error ResourceInteractiveLoaderText::poll() {
 
 	if (error != OK)
 		return error;
+
+	if (!subscene_loader.is_null()) {
+		return _poll_subresource();
+	}
 
 	if (next_tag.name == "ext_resource") {
 
@@ -420,6 +456,7 @@ Error ResourceInteractiveLoaderText::poll() {
 		String path = next_tag.fields["path"];
 		String type = next_tag.fields["type"];
 		int index = next_tag.fields["id"];
+//		WARN_PRINT(String("Loading ext: " + path + " - " + type).ascii().get_data());
 
 		if (path.find("://") == -1 && path.is_rel_path()) {
 			// path is relative to file being loaded, so convert to a resource path
@@ -428,6 +465,17 @@ Error ResourceInteractiveLoaderText::poll() {
 
 		if (remaps.has(path)) {
 			path = remaps[path];
+		}
+
+		if (type == "PackedScene" || type == "Script") {
+			subscene_loader = ResourceLoader::load_interactive(path);
+			if (subscene_loader.is_null()) {
+				error = ERR_FILE_CORRUPT;
+				error_text = "[ext_resource] referenced nonexistent resource at: " + path;
+				_printerr();
+				return error;
+			}
+			return _poll_subresource();
 		}
 
 		RES res = ResourceLoader::load(path, type);
@@ -481,6 +529,7 @@ Error ResourceInteractiveLoaderText::poll() {
 		int id = next_tag.fields["id"];
 
 		String path = local_path + "::" + itos(id);
+//		WARN_PRINT(String("Loading internal: " + path).ascii().get_data());
 
 		//bool exists=ResourceCache::has(path);
 
@@ -1315,6 +1364,17 @@ Error ResourceFormatLoaderText::rename_dependencies(const String &p_path, const 
 
 ResourceFormatLoaderText *ResourceFormatLoaderText::singleton = NULL;
 
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+
 Error ResourceFormatLoaderText::convert_file_to_binary(const String &p_src_path, const String &p_dst_path) {
 
 	Error err;
@@ -1333,17 +1393,6 @@ Error ResourceFormatLoaderText::convert_file_to_binary(const String &p_src_path,
 	ria->open(f);
 	return ria->save_as_binary(f, p_dst_path);
 }
-
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
 
 String ResourceFormatSaverTextInstance::_write_resources(void *ud, const RES &p_resource) {
 
@@ -1519,9 +1568,18 @@ Error ResourceFormatSaverTextInstance::save(const String &p_path, const RES &p_r
 
 	{
 		String title = packed_scene.is_valid() ? "[gd_scene " : "[gd_resource ";
+
 		if (packed_scene.is_null())
 			title += "type=\"" + p_resource->get_class() + "\" ";
-		int load_steps = saved_resources.size() + external_resources.size();
+
+		int load_steps = 0;
+		if (packed_scene.is_valid()) {
+			Vector<String> *found_external_resources = memnew(Vector<String>);
+			load_steps = packed_scene->get_state()->get_load_step_count(found_external_resources);
+			memdelete(found_external_resources);
+		} else {
+			load_steps = saved_resources.size() + external_resources.size();
+		}
 		/*
 		if (packed_scene.is_valid()) {
 			load_steps+=packed_scene->get_node_count();

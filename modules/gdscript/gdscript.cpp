@@ -544,6 +544,10 @@ void GDScript::_set_subclass_path(Ref<GDScript> &p_sc, const String &p_path) {
 }
 
 Error GDScript::reload(bool p_keep_state) {
+	return _reload(p_keep_state, Map<String, RES>());
+}
+
+Error GDScript::_reload(bool p_keep_state, const Map<String, RES> &preloaded_resources) {
 
 #ifndef NO_THREADS
 	GDScriptLanguage::singleton->lock->lock();
@@ -571,6 +575,9 @@ Error GDScript::reload(bool p_keep_state) {
 
 	valid = false;
 	GDScriptParser parser;
+
+//	WARN_PRINT("PARSE");
+	parser.set_preloaded_resources(preloaded_resources);
 	Error err = parser.parse(source, basedir, false, path);
 	if (err) {
 		if (ScriptDebugger::get_singleton()) {
@@ -581,6 +588,8 @@ Error GDScript::reload(bool p_keep_state) {
 	}
 
 	bool can_run = ScriptServer::is_scripting_enabled() || parser.is_tool_script();
+
+//	WARN_PRINT("COMPILE");
 
 	GDScriptCompiler compiler;
 	err = compiler.compile(&parser, this, p_keep_state);
@@ -728,7 +737,7 @@ Vector<uint8_t> GDScript::get_as_byte_code() const {
 	return tokenizer.parse_code_string(source);
 };
 
-Error GDScript::load_byte_code(const String &p_path) {
+Error GDScript::load_byte_code(const String &p_path, const Map<String, RES> &preloaded_resources) {
 
 	Vector<uint8_t> bytecode;
 
@@ -779,6 +788,8 @@ Error GDScript::load_byte_code(const String &p_path) {
 
 	valid = false;
 	GDScriptParser parser;
+	WARN_PRINT("PARSE BYTE CODE");
+	parser.set_preloaded_resources(preloaded_resources);
 	Error err = parser.parse_bytecode(bytecode, basedir, get_path());
 	if (err) {
 		_err_print_error("GDScript::load_byte_code", path.empty() ? "built-in" : (const char *)path.utf8().get_data(), parser.get_error_line(), ("Parse Error: " + parser.get_error()).utf8().get_data(), ERR_HANDLER_SCRIPT);
@@ -786,6 +797,7 @@ Error GDScript::load_byte_code(const String &p_path) {
 	}
 
 	GDScriptCompiler compiler;
+	WARN_PRINT("COMPILE");
 	err = compiler.compile(&parser, this);
 
 	if (err) {
@@ -2150,6 +2162,119 @@ GDScriptLanguage::~GDScriptLanguage() {
 }
 
 /*************** RESOURCE ***************/
+void ResourceInteractiveFormatLoaderGDScript::set_local_path(const String &p_local_path) {
+
+}
+Ref<Resource> ResourceInteractiveFormatLoaderGDScript::get_resource() {
+	return resource;
+}
+Error ResourceInteractiveFormatLoaderGDScript::poll() {
+	while (stage < dependencies.size()) {
+		String d = dependencies[stage];
+//		WARN_PRINT(String("STAGE: " + itos(stage) + " : " + d).ascii().get_data());
+
+		if (preloaded_resources.has(d)) {
+//			WARN_PRINT("Resource already in loaded - skipping");
+			stage++;
+			continue;
+		}
+
+		if (dependency_loaders.has(d)) {
+//			WARN_PRINT("Loader exists");
+			Error d_err = dependency_loaders[d]->poll();
+			if (d_err == ERR_FILE_EOF) {
+//				WARN_PRINT("Loader DONE");
+				preloaded_resources[d] = dependency_loaders[d]->get_resource();
+
+				stage++;
+				dependency_loaders[d].unref();
+				return OK;
+			}
+			return d_err;
+		}
+
+		preloaded_resources[d] = ResourceLoader::load(d);
+		stage++;
+		return OK;
+	}
+
+	// Load script itself
+
+	GDScript *script = memnew(GDScript);
+	Ref<GDScript> scriptres(script);
+
+	if (binary) {
+		script->set_script_path(original_path); // script needs this.
+		script->set_path(original_path);
+
+		error = script->load_byte_code(script_path, preloaded_resources);
+	} else {
+		error = script->load_source_code(script_path);
+
+		script->set_script_path(original_path); // script needs this.
+		script->set_path(original_path);
+
+		script->_reload(false, preloaded_resources);
+	}
+
+	resource = scriptres;
+
+	if (error == OK) {
+		return ERR_FILE_EOF;
+	}
+	return error;
+}
+int ResourceInteractiveFormatLoaderGDScript::get_stage() const {
+	return stage;
+}
+int ResourceInteractiveFormatLoaderGDScript::get_stage_count() const {
+	return 1;
+}
+
+void ResourceInteractiveFormatLoaderGDScript::set_translation_remapped(bool p_remapped) {}
+
+ResourceInteractiveFormatLoaderGDScript::ResourceInteractiveFormatLoaderGDScript(){}
+ResourceInteractiveFormatLoaderGDScript::~ResourceInteractiveFormatLoaderGDScript(){}
+
+
+Ref<ResourceInteractiveLoader> ResourceFormatLoaderGDScript::load_interactive(const String &p_path, const String &p_original_path, Error *r_error) {
+	if (r_error)
+		*r_error = ERR_CANT_OPEN;
+
+	FileAccessRef file = FileAccess::open(p_path, FileAccess::READ);
+	if (!file)
+		*r_error = ERR_CANT_OPEN;
+
+	Ref<ResourceInteractiveFormatLoaderGDScript> ria = memnew(ResourceInteractiveFormatLoaderGDScript);
+	ria->stage = 0;
+	ria->script_path = p_path;
+	ria->original_path = p_original_path;
+	ria->binary = (p_path.ends_with(".gde") || p_path.ends_with(".gdc"));
+
+//	WARN_PRINT("CHECK_DEPENDENCIES");
+	String source = file->get_as_utf8_string();
+	if (!source.empty()) {
+		GDScriptParser parser;
+//		WARN_PRINT("CHECK_SOURCE_OK");
+		if (OK == parser.parse(source, p_path.get_base_dir(), true, p_path, false, NULL, true)) {
+//			WARN_PRINT("OK_PARSE_DEPENDENCIES");
+			for (const List<String>::Element *E = parser.get_dependencies().front(); E; E = E->next()) {
+//				WARN_PRINT(String("DEPENDENCY!: " + E->get()).ascii().get_data());
+				String dependency_path = E->get();
+				ria->dependencies.push_back(dependency_path);
+
+				if (dependency_path.ends_with(".gd") || dependency_path.ends_with(".tscn") || dependency_path.ends_with(".scn")) {
+					ria->dependency_loaders[dependency_path] = ResourceLoader::load_interactive(dependency_path);
+					if (ria->dependency_loaders[dependency_path].is_null()) {
+						*r_error = ERR_FILE_CORRUPT;
+					}
+				}
+			}
+		}
+	}
+
+	return ria;
+}
 
 RES ResourceFormatLoaderGDScript::load(const String &p_path, const String &p_original_path, Error *r_error) {
 

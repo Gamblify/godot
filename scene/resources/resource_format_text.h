@@ -43,6 +43,7 @@ class ResourceInteractiveLoaderText : public ResourceInteractiveLoader {
 	String local_path;
 	String res_path;
 	String error_text;
+	Ref<ResourceInteractiveLoader> subscene_loader;
 
 	FileAccess *f;
 
@@ -108,6 +109,7 @@ class ResourceInteractiveLoaderText : public ResourceInteractiveLoader {
 	RES resource;
 
 	Ref<PackedScene> _parse_node_tag(VariantParser::ResourceParser &parser);
+	Error _poll_subresource();
 
 public:
 	virtual void set_local_path(const String &p_local_path);
