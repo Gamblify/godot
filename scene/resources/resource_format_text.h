@@ -43,6 +43,7 @@ class ResourceInteractiveLoaderText : public ResourceInteractiveLoader {
 	String local_path;
 	String res_path;
 	String error_text;
+	Ref<ResourceInteractiveLoader> subscene_loader;
 
 	FileAccess *f;
 

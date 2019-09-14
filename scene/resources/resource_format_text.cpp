@@ -394,6 +394,41 @@ Error ResourceInteractiveLoaderText::poll() {
 	if (error != OK)
 		return error;
 
+	if (!subscene_loader.is_null()) {
+		error = subscene_loader->poll();
+		if (error != ERR_FILE_EOF) {
+			resource_current++;
+			return error;
+		}
+
+		RES res = subscene_loader->get_resource();
+		subscene_loader.unref();
+
+		resource_cache.push_back(res);
+
+		String path = next_tag.fields["path"];
+		String type = next_tag.fields["type"];
+		int index = next_tag.fields["id"];
+#ifdef TOOLS_ENABLED
+		//remember ID for saving
+		res->set_id_for_path(local_path, index);
+#endif
+
+		ExtResource er;
+		er.path = path;
+		er.type = type;
+		ext_resources[index] = er;
+
+		error = VariantParser::parse_tag(&stream, lines, error_text, next_tag, &rp);
+
+		if (error) {
+			_printerr();
+		}
+
+		resource_current++;
+		return error;
+	}
+
 	if (next_tag.name == "ext_resource") {
 
 		if (!next_tag.fields.has("path")) {
@@ -428,6 +463,18 @@ Error ResourceInteractiveLoaderText::poll() {
 
 		if (remaps.has(path)) {
 			path = remaps[path];
+		}
+
+		if (type == "PackedScene") {
+			subscene_loader = ResourceLoader::load_interactive(path);
+			if (subscene_loader.is_null()) {
+				error = ERR_FILE_CORRUPT;
+				error_text = "[ext_resource] referenced nonexistent resource at: " + path;
+				_printerr();
+				return error;
+			}
+			resource_current++;
+			return OK;
 		}
 
 		RES res = ResourceLoader::load(path, type);
@@ -1316,6 +1363,17 @@ Error ResourceFormatLoaderText::rename_dependencies(const String &p_path, const 
 
 ResourceFormatLoaderText *ResourceFormatLoaderText::singleton = NULL;
 
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+/*****************************************************************************************************/
+
 Error ResourceFormatLoaderText::convert_file_to_binary(const String &p_src_path, const String &p_dst_path) {
 
 	Error err;
@@ -1331,17 +1389,6 @@ Error ResourceFormatLoaderText::convert_file_to_binary(const String &p_src_path,
 	ria->open(f);
 	return ria->save_as_binary(f, p_dst_path);
 }
-
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
-/*****************************************************************************************************/
 
 String ResourceFormatSaverTextInstance::_write_resources(void *ud, const RES &p_resource) {
 
@@ -1513,9 +1560,16 @@ Error ResourceFormatSaverTextInstance::save(const String &p_path, const RES &p_r
 
 	{
 		String title = packed_scene.is_valid() ? "[gd_scene " : "[gd_resource ";
+
 		if (packed_scene.is_null())
 			title += "type=\"" + p_resource->get_class() + "\" ";
-		int load_steps = saved_resources.size() + external_resources.size();
+
+		int load_steps = 0;
+		if (packed_scene.is_valid()) {
+			load_steps = packed_scene->get_state()->get_load_step_count();
+		} else {
+			load_steps = saved_resources.size() + external_resources.size();
+		}
 		/*
 		if (packed_scene.is_valid()) {
 			load_steps+=packed_scene->get_node_count();

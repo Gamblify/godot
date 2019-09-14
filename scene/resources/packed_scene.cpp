@@ -1287,6 +1287,87 @@ Dictionary SceneState::get_bundled_scene() const {
 	return d;
 }
 
+int SceneState::_get_load_step_count(Variant p_variant, Vector<RES> *p_found_resources) const {
+	int load_step_count = 0;
+
+
+	switch (p_variant.get_type()) {
+		case Variant::OBJECT: {
+			RES res = p_variant.operator RefPtr();
+			if (res.is_null()) {
+				return 0;
+			}
+			if (res.is_null() || p_found_resources->find(res) != -1)
+				return 0;
+//			WARN_PRINT(String(Variant::get_type_name(p_variant.get_type()) + " - " + res->get_name() + " - " + res->get_path()).ascii().get_data())
+
+			if (res->get_path().find("::") != -1) {
+				// This means that the resource is not external. We should check for sub-resources
+				List<PropertyInfo> props;
+				p_variant.get_property_list(&props);
+				for (List<PropertyInfo>::Element *E = props.front(); E; E = E->next()) {
+					String name = E->get().name;
+					Variant value = res->get(name);
+					if (!value.is_zero()) {
+						load_step_count += _get_load_step_count(value, p_found_resources);
+					}
+				}
+			}
+
+			p_found_resources->push_back(res);
+			load_step_count++;
+		} break;
+		case Variant::ARRAY: {
+			Array varray = p_variant;
+			int len = varray.size();
+			for (int i = 0; i < len; i++) {
+				Variant v = varray.get(i);
+				load_step_count += _get_load_step_count(v, p_found_resources);
+			}
+		} break;
+		case Variant::DICTIONARY: {
+			Dictionary d = p_variant;
+			List<Variant> keys;
+			d.get_key_list(&keys);
+			for (List<Variant>::Element *E = keys.front(); E; E = E->next()) {
+				Variant v = d[E->get()];
+				load_step_count += _get_load_step_count(v, p_found_resources);
+			}
+		} break;
+		default: {}
+	}
+
+	return load_step_count;
+}
+
+int SceneState::get_load_step_count() const {
+	Vector<String> external_resource_paths = Vector<String>();
+	Vector<RES> *found_resources = memnew(Vector<RES>);
+	int load_steps = 1;
+
+	// Add load steps for objects in subscenes
+	for (int i = 0; i < get_node_count(); i++) {
+		//WARN_PRINT(String(get_node_type(i)).ascii().get_data())
+		if (is_node_instance_placeholder(i))
+			continue;
+
+		Ref<PackedScene> instance = get_node_instance(i);
+		if (instance.is_valid() && external_resource_paths.find(instance->get_path()) == -1) {
+			external_resource_paths.push_back(instance->get_path());
+			load_steps += instance->get_state()->get_load_step_count();
+		}
+	}
+
+	// Add load steps for each remaining object in the scene
+	for (int i = 0; i < variants.size(); i++) {
+		load_steps += _get_load_step_count(variants[i], found_resources);
+	}
+
+	memdelete(found_resources);
+
+	return load_steps;
+}
+
 int SceneState::get_node_count() const {
 
 	return nodes.size();
