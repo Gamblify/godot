@@ -117,8 +117,22 @@ Error ResourceFormatImporter::_get_path_and_type(const String &p_path, PathAndTy
 	return OK;
 }
 
-RES ResourceFormatImporter::load(const String &p_path, const String &p_original_path, Error *r_error) {
+Ref<ResourceInteractiveLoader> ResourceFormatImporter::load_interactive(const String &p_path, const String &p_original_path, Error *r_error) {
+	PathAndType pat;
+	Error err = _get_path_and_type(p_path, pat);
 
+	if (err != OK) {
+
+		if (r_error)
+			*r_error = err;
+
+		return RES();
+	}
+
+	return ResourceLoader::load_interactive(pat.path, pat.type, true, r_error);
+}
+
+RES ResourceFormatImporter::load(const String &p_path, const String &p_original_path, Error *r_error) {
 	PathAndType pat;
 	Error err = _get_path_and_type(p_path, pat);
 

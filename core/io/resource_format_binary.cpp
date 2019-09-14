@@ -762,7 +762,7 @@ Error ResourceInteractiveLoaderBinary::poll() {
 		error = OK;
 	}
 
-	return OK;
+	return error;
 }
 int ResourceInteractiveLoaderBinary::get_stage() const {
 

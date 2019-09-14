@@ -94,6 +94,7 @@ class SceneState : public Reference {
 
 	Error _parse_node(Node *p_owner, Node *p_node, int p_parent_idx, Map<StringName, int> &name_map, HashMap<Variant, int, VariantHasher, VariantComparator> &variant_map, Map<Node *, int> &node_map, Map<Node *, int> &nodepath_map);
 	Error _parse_connections(Node *p_owner, Node *p_node, Map<StringName, int> &name_map, HashMap<Variant, int, VariantHasher, VariantComparator> &variant_map, Map<Node *, int> &node_map, Map<Node *, int> &nodepath_map);
+	int _get_load_step_count(Variant p_variant, Vector<RES> *p_found_resources, Vector<String> *p_found_external_resources) const;
 
 	String path;
 
@@ -144,6 +145,7 @@ public:
 	bool can_instance() const;
 	Node *instance(GenEditState p_edit_state) const;
 
+	int get_load_step_count(Vector<String> *p_found_external_resources) const;
 	//unbuild API
 
 	int get_node_count() const;

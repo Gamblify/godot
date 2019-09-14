@@ -43,6 +43,7 @@ class ResourceInteractiveLoader : public Reference {
 
 protected:
 	static void _bind_methods();
+	Map<String, RES> preloaded_resources;
 
 public:
 	virtual void set_local_path(const String &p_local_path) = 0;
@@ -52,6 +53,8 @@ public:
 	virtual int get_stage_count() const = 0;
 	virtual void set_translation_remapped(bool p_remapped) = 0;
 	virtual Error wait();
+	void set_preloaded_resources(const Map<String, RES> &p_preloaded_resources);
+	Map<String, RES> get_preloaded_resources(){return preloaded_resources;};
 
 	ResourceInteractiveLoader() {}
 	~ResourceInteractiveLoader();

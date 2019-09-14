@@ -138,6 +138,12 @@ public:
 	ResourceInteractiveLoaderDefault() {}
 };
 
+void ResourceInteractiveLoader::set_preloaded_resources(const Map<String, RES> &p_preloaded_resources) {
+	for(Map<String, RES>::Element *E=p_preloaded_resources.front();E;E=E->next()) {
+		preloaded_resources[E->key()] = E->get();
+	}
+}
+
 Ref<ResourceInteractiveLoader> ResourceFormatLoader::load_interactive(const String &p_path, const String &p_original_path, Error *r_error) {
 
 	//either this

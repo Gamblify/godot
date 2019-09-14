@@ -487,9 +487,14 @@ GDScriptParser::Node *GDScriptParser::_parse_expression(Node *p_parent, bool p_s
 				if (!validating) {
 
 					//this can be too slow for just validating code
-					if (for_completion && ScriptCodeCompletionCache::get_singleton() && FileAccess::exists(path)) {
+					if (preloaded_resources.has(path)) {
+//						WARN_PRINT(String("GETTING PRELOADED RESOURCE: " + path).ascii().get_data());
+						res = preloaded_resources[path];
+					} else if (for_completion && ScriptCodeCompletionCache::get_singleton() && FileAccess::exists(path)) {
+//						WARN_PRINT(String("LOADING CACHED RESOURCE: " + path).ascii().get_data());
 						res = ScriptCodeCompletionCache::get_singleton()->get_cached_resource(path);
 					} else if (!for_completion || FileAccess::exists(path)) {
+//						WARN_PRINT(String("LOADING RESOURCE: " + path).ascii().get_data());
 						res = ResourceLoader::load(path);
 					}
 				} else {
@@ -8504,6 +8509,12 @@ Error GDScriptParser::parse(const String &p_code, const String &p_base_path, boo
 	memdelete(tt);
 	tokenizer = NULL;
 	return ret;
+}
+
+void GDScriptParser::set_preloaded_resources(const Map<String, RES> &p_preloaded_resources) {
+	for(Map<String, RES>::Element *E=p_preloaded_resources.front();E;E=E->next()) {
+		preloaded_resources[E->key()] = E->get();
+	}
 }
 
 bool GDScriptParser::is_tool_script() const {
