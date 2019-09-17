@@ -397,6 +397,7 @@ Error ResourceInteractiveLoaderText::_poll_subresource() {
 	}
 
 	RES res = subscene_loader->get_resource();
+	set_preloaded_resources(subscene_loader->get_preloaded_resources());
 	subscene_loader.unref();
 
 	resource_cache.push_back(res);
@@ -404,6 +405,8 @@ Error ResourceInteractiveLoaderText::_poll_subresource() {
 	String path = next_tag.fields["path"];
 	String type = next_tag.fields["type"];
 	int index = next_tag.fields["id"];
+
+	preloaded_resources[path] = res;
 
 	ExtResource er;
 	er.path = path;
@@ -475,6 +478,7 @@ Error ResourceInteractiveLoaderText::poll() {
 				_printerr();
 				return error;
 			}
+			subscene_loader->set_preloaded_resources(preloaded_resources);
 			return _poll_subresource();
 		}
 
@@ -492,6 +496,7 @@ Error ResourceInteractiveLoaderText::poll() {
 			}
 		} else {
 
+			preloaded_resources[path] = res;
 			resource_cache.push_back(res);
 		}
 

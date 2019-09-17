@@ -516,11 +516,12 @@ class ResourceInteractiveFormatLoaderGDScript : public ResourceInteractiveLoader
 	bool binary;
 
 	List<String> dependencies;
-	Map<String, Ref<ResourceInteractiveLoader>> dependency_loaders;
-	Map<String, RES> preloaded_resources;
+	Ref<ResourceInteractiveLoader> dependency_loader;
 
 	Error error;
 	RES resource;
+
+	Error _poll_dependency();
 
 public:
 	virtual void set_local_path(const String &p_local_path);

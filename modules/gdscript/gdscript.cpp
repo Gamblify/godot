@@ -2168,7 +2168,28 @@ void ResourceInteractiveFormatLoaderGDScript::set_local_path(const String &p_loc
 Ref<Resource> ResourceInteractiveFormatLoaderGDScript::get_resource() {
 	return resource;
 }
+
+Error ResourceInteractiveFormatLoaderGDScript::_poll_dependency() {
+	error = dependency_loader->poll();
+	if (error != ERR_FILE_EOF) {
+		return error;
+	}
+
+	RES res = dependency_loader->get_resource();
+	set_preloaded_resources(dependency_loader->get_preloaded_resources());
+	dependency_loader.unref();
+
+	preloaded_resources[dependencies[stage]] = res;
+
+	stage++;
+	return OK;
+}
+
 Error ResourceInteractiveFormatLoaderGDScript::poll() {
+	if (!dependency_loader.is_null()) {
+		return _poll_dependency();
+	}
+
 	while (stage < dependencies.size()) {
 		String d = dependencies[stage];
 //		WARN_PRINT(String("STAGE: " + itos(stage) + " : " + d).ascii().get_data());
@@ -2177,25 +2198,18 @@ Error ResourceInteractiveFormatLoaderGDScript::poll() {
 //			WARN_PRINT("Resource already in loaded - skipping");
 			stage++;
 			continue;
-		}
-
-		if (dependency_loaders.has(d)) {
-//			WARN_PRINT("Loader exists");
-			Error d_err = dependency_loaders[d]->poll();
-			if (d_err == ERR_FILE_EOF) {
-//				WARN_PRINT("Loader DONE");
-				preloaded_resources[d] = dependency_loaders[d]->get_resource();
-
-				stage++;
-				dependency_loaders[d].unref();
-				return OK;
+		} else if (d.ends_with(".gd") || d.ends_with(".tscn") || d.ends_with(".scn")) {
+			dependency_loader = ResourceLoader::load_interactive(d);
+			if (dependency_loader.is_null()) {
+				return ERR_FILE_CORRUPT;
 			}
-			return d_err;
+			dependency_loader->set_preloaded_resources(preloaded_resources);
+			return _poll_dependency();
+		} else {
+			preloaded_resources[d] = ResourceLoader::load(d);
+			stage++;
+			return OK;
 		}
-
-		preloaded_resources[d] = ResourceLoader::load(d);
-		stage++;
-		return OK;
 	}
 
 	// Load script itself
@@ -2262,13 +2276,6 @@ Ref<ResourceInteractiveLoader> ResourceFormatLoaderGDScript::load_interactive(co
 //				WARN_PRINT(String("DEPENDENCY!: " + E->get()).ascii().get_data());
 				String dependency_path = E->get();
 				ria->dependencies.push_back(dependency_path);
-
-				if (dependency_path.ends_with(".gd") || dependency_path.ends_with(".tscn") || dependency_path.ends_with(".scn")) {
-					ria->dependency_loaders[dependency_path] = ResourceLoader::load_interactive(dependency_path);
-					if (ria->dependency_loaders[dependency_path].is_null()) {
-						*r_error = ERR_FILE_CORRUPT;
-					}
-				}
 			}
 		}
 	}
