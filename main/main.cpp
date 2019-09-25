@@ -822,6 +822,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	GLOBAL_DEF("logging/file_logging/log_path", "user://logs/log.txt");
 	GLOBAL_DEF("logging/file_logging/max_log_files", 10);
 	ProjectSettings::get_singleton()->set_custom_property_info("logging/file_logging/max_log_files", PropertyInfo(Variant::INT, "logging/file_logging/max_log_files", PROPERTY_HINT_RANGE, "0,20,1,or_greater")); //no negative numbers
+	
 	if (FileAccess::get_create_func(FileAccess::ACCESS_USERDATA) && GLOBAL_GET("logging/file_logging/enable_file_logging")) {
 		String base_path = GLOBAL_GET("logging/file_logging/log_path");
 		int max_files = GLOBAL_GET("logging/file_logging/max_log_files");
@@ -1266,6 +1267,10 @@ Error Main::setup2(Thread::ID p_main_tid_override) {
 	print_verbose("CORE API HASH: " + itos(ClassDB::get_api_hash(ClassDB::API_CORE)));
 	print_verbose("EDITOR API HASH: " + itos(ClassDB::get_api_hash(ClassDB::API_EDITOR)));
 	MAIN_PRINT("Main: Done");
+	
+	if (OS::get_singleton()->get_environment("GODOT_LOG_PATH").empty() == false) {
+		OS::get_singleton()->add_logger(memnew(RotatedFileLogger(OS::get_singleton()->get_environment("GODOT_LOG_PATH"), 10)));
+	} 
 
 	return OK;
 }

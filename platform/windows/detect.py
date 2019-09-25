@@ -179,7 +179,8 @@ def configure_msvc(env, manual_msvc_config):
         else: # optimize for size
             env.Append(CCFLAGS=['/O1'])
         env.AppendUnique(CPPDEFINES = ['DEBUG_ENABLED'])
-        env.Append(LINKFLAGS=['/SUBSYSTEM:CONSOLE'])
+        env.Append(LINKFLAGS=['/SUBSYSTEM:WINDOWS'])
+        env.Append(LINKFLAGS=['/ENTRY:mainCRTStartup'])
         env.Append(LINKFLAGS=['/OPT:REF'])
 
     elif (env["target"] == "debug"):
