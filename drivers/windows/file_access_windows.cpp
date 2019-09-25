@@ -115,7 +115,8 @@ Error FileAccessWindows::_open(const String &p_path, int p_mode_flags) {
 		path = path + ".tmp";
 	}
 
-	errno_t errcode = _wfopen_s(&f, path.c_str(), mode_string);
+	errno_t errcode = ERR_FILE_CANT_OPEN;
+	f = _wfsopen(path.c_str(), mode_string, _SH_DENYNO);
 
 	if (f == NULL) {
 		switch (errcode) {

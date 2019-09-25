@@ -197,7 +197,8 @@ def configure_msvc(env, manual_msvc_config):
     elif env["target"] == "debug":
         env.AppendUnique(CCFLAGS=["/Z7", "/Od", "/EHsc"])
         env.AppendUnique(CPPDEFINES=["DEBUG_ENABLED"])
-        env.Append(LINKFLAGS=["/SUBSYSTEM:CONSOLE"])
+        env.Append(LINKFLAGS=['/SUBSYSTEM:WINDOWS'])
+        env.Append(LINKFLAGS=['/ENTRY:mainCRTStartup'])
         env.Append(LINKFLAGS=["/DEBUG"])
 
     if env["debug_symbols"] == "full" or env["debug_symbols"] == "yes":

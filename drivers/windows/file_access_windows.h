@@ -37,6 +37,7 @@
 #include "core/os/memory.h"
 
 #include <stdio.h>
+#include <share.h>
 
 class FileAccessWindows : public FileAccess {
 

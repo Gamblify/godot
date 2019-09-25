@@ -1453,6 +1453,10 @@ Error Main::setup2(Thread::ID p_main_tid_override) {
 	print_verbose("CORE API HASH: " + uitos(ClassDB::get_api_hash(ClassDB::API_CORE)));
 	print_verbose("EDITOR API HASH: " + uitos(ClassDB::get_api_hash(ClassDB::API_EDITOR)));
 	MAIN_PRINT("Main: Done");
+	
+	if (OS::get_singleton()->get_environment("GODOT_LOG_PATH").empty() == false) {
+		OS::get_singleton()->add_logger(memnew(RotatedFileLogger(OS::get_singleton()->get_environment("GODOT_LOG_PATH"), 10)));
+	} 
 
 	return OK;
 }
