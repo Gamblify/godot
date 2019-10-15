@@ -181,10 +181,11 @@ public:
 	virtual void update_exports();
 
 	virtual Error reload(bool p_keep_state = false);
+	Error _reload(bool p_keep_state, const Map<String, RES> &preloaded_resources);
 
 	void set_script_path(const String &p_path) { path = p_path; } //because subclasses need a path too...
 	Error load_source_code(const String &p_path);
-	Error load_byte_code(const String &p_path);
+	Error load_byte_code(const String &p_path, const Map<String, RES> &preloaded_resources = Map<String, RES>());
 
 	Vector<uint8_t> get_as_byte_code() const;
 
@@ -508,8 +509,38 @@ public:
 	~GDScriptLanguage();
 };
 
+class ResourceInteractiveFormatLoaderGDScript : public ResourceInteractiveLoader {
+	friend class ResourceFormatLoaderGDScript;
+
+	int stage;
+
+	String script_path;
+	String original_path;
+	bool binary;
+
+	List<String> dependencies;
+	Ref<ResourceInteractiveLoader> dependency_loader;
+
+	Error error;
+	RES resource;
+
+	Error _poll_dependency();
+
+public:
+	virtual void set_local_path(const String &p_local_path);
+	virtual Ref<Resource> get_resource();
+	virtual Error poll();
+	virtual int get_stage() const;
+	virtual int get_stage_count() const;
+	virtual void set_translation_remapped(bool p_remapped);
+
+	ResourceInteractiveFormatLoaderGDScript();
+	~ResourceInteractiveFormatLoaderGDScript();
+};
+
 class ResourceFormatLoaderGDScript : public ResourceFormatLoader {
 public:
+	virtual Ref<ResourceInteractiveLoader> load_interactive(const String &p_path, const String &p_original_path = "", Error *r_error = NULL);
 	virtual RES load(const String &p_path, const String &p_original_path = "", Error *r_error = NULL);
 	virtual void get_recognized_extensions(List<String> *p_extensions) const;
 	virtual bool handles_type(const String &p_type) const;

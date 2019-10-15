@@ -542,6 +542,7 @@ private:
 	bool check_types;
 	bool dependencies_only;
 	List<String> dependencies;
+	Map<String, RES> preloaded_resources;
 #ifdef DEBUG_ENABLED
 	Set<int> *safe_lines;
 #endif // DEBUG_ENABLED
@@ -665,6 +666,7 @@ public:
 	int get_completion_identifier_is_function();
 
 	const List<String> &get_dependencies() const { return dependencies; }
+	void set_preloaded_resources(const Map<String, RES> &p_preloaded_resources);
 
 	void clear();
 	GDScriptParser();
