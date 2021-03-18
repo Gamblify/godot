@@ -107,4 +107,21 @@ public:
 	virtual ~CompositeLogger();
 };
 
+/**
+ * Writes messages to a buffer that can be accessed from the Engine singleton.
+ */
+class BufferedSingletonLogger : public Logger {
+	Array buffer;
+	int buffer_size;
+
+public:
+	BufferedSingletonLogger(int p_buffer_size = 100);
+
+	virtual void logv(const char *p_format, va_list p_list, bool p_err) _PRINTF_FORMAT_ATTRIBUTE_2_0;
+	virtual void log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, ErrorType p_type = ERR_ERROR);
+	Array flushBuffer();
+
+	virtual ~BufferedSingletonLogger();
+};
+
 #endif

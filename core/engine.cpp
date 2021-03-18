@@ -210,6 +210,20 @@ void Engine::get_singletons(List<Singleton> *p_singletons) {
 		p_singletons->push_back(E->get());
 }
 
+void Engine::set_buffered_logger(BufferedSingletonLogger *logger) {
+
+	buffered_log = logger;
+}
+
+Array Engine::get_log_buffer() {
+	if (GLOBAL_GET("logging/enable_buffered_logging")) {
+		return buffered_log->flushBuffer();
+	} else {
+		ERR_PRINT(vformat("project setting 'logging/enable_buffered_logging' must be true in order to get the buffered log"));
+		return Array();
+	}
+}
+
 Engine *Engine::singleton = NULL;
 
 Engine *Engine::get_singleton() {
@@ -235,6 +249,7 @@ Engine::Engine() {
 	_frame_ticks = 0;
 	_frame_step = 0;
 	editor_hint = false;
+	buffered_log = 0;
 }
 
 Engine::Singleton::Singleton(const StringName &p_name, Object *p_ptr) :

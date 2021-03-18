@@ -35,6 +35,8 @@
 #include "core/os/main_loop.h"
 #include "core/ustring.h"
 #include "core/vector.h"
+#include "core/io/logger.h"
+#include "core/project_settings.h"
 
 class Engine {
 
@@ -71,6 +73,8 @@ private:
 	Map<StringName, Object *> singleton_ptrs;
 
 	bool editor_hint;
+
+	BufferedSingletonLogger *buffered_log;
 
 	static Engine *singleton;
 
@@ -126,6 +130,9 @@ public:
 	Dictionary get_donor_info() const;
 	Dictionary get_license_info() const;
 	String get_license_text() const;
+
+	Array get_log_buffer();
+	void set_buffered_logger(BufferedSingletonLogger *logger);
 
 	Engine();
 	virtual ~Engine() {}

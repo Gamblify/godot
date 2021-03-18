@@ -991,6 +991,8 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	GLOBAL_DEF("logging/file_logging/enable_file_logging.pc", true);
 	GLOBAL_DEF("logging/file_logging/log_path", "user://logs/godot.log");
 	GLOBAL_DEF("logging/file_logging/max_log_files", 5);
+	GLOBAL_DEF("logging/enable_buffered_logging", false);
+	GLOBAL_DEF("logging/buffered_logging/buffer_size", 100);
 	ProjectSettings::get_singleton()->set_custom_property_info("logging/file_logging/max_log_files", PropertyInfo(Variant::INT, "logging/file_logging/max_log_files", PROPERTY_HINT_RANGE, "0,20,1,or_greater")); //no negative numbers
 	if (!project_manager && !editor && FileAccess::get_create_func(FileAccess::ACCESS_USERDATA) && GLOBAL_GET("logging/file_logging/enable_file_logging")) {
 		// Don't create logs for the project manager as they would be written to
@@ -998,6 +1000,13 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 		String base_path = GLOBAL_GET("logging/file_logging/log_path");
 		int max_files = GLOBAL_GET("logging/file_logging/max_log_files");
 		OS::get_singleton()->add_logger(memnew(RotatedFileLogger(base_path, max_files)));
+	}
+
+	if (!project_manager && !editor && GLOBAL_GET("logging/enable_buffered_logging")) {
+		int buffer_size = GLOBAL_GET("logging/buffered_logging/buffer_size");
+		BufferedSingletonLogger *buffer_logger = memnew(BufferedSingletonLogger(buffer_size));
+		OS::get_singleton()->add_logger(buffer_logger);
+		Engine::get_singleton()->set_buffered_logger(buffer_logger);
 	}
 
 	if (main_args.size() == 0 && String(GLOBAL_DEF("application/run/main_scene", "")) == "") {

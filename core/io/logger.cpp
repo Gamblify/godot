@@ -277,3 +277,52 @@ CompositeLogger::~CompositeLogger() {
 		memdelete(loggers[i]);
 	}
 }
+
+BufferedSingletonLogger::BufferedSingletonLogger(int p_buffer_size) {
+	buffer_size = p_buffer_size;
+}
+
+BufferedSingletonLogger::~BufferedSingletonLogger() {
+}
+
+Array BufferedSingletonLogger::flushBuffer() {
+	Array return_array = buffer.duplicate();
+	buffer.clear();
+	return return_array;
+}
+
+void BufferedSingletonLogger::logv(const char *p_format, va_list p_list, bool p_err) {
+	const int static_buf_size = 512;
+	char static_buf[static_buf_size];
+	char *buf = static_buf;
+	va_list list_copy;
+	va_copy(list_copy, p_list);
+	int len = vsnprintf(buf, static_buf_size, p_format, p_list);
+	if (len >= static_buf_size) {
+		buf = (char *)Memory::alloc_static(len + 1);
+		vsnprintf(buf, len + 1, p_format, list_copy);
+	}
+	va_end(list_copy);
+	String new_message = String(buf);
+	if (buffer.size() >= buffer_size) {
+		buffer.pop_front();
+		buffer.pop_front();
+		WARN_PRINT("Maximum size of buffered log has been exceeded. Discarding log messages.");
+	}
+	buffer.push_back(new_message);
+	//file->store_buffer((uint8_t *)buf, len);
+
+	if (len >= static_buf_size) {
+		Memory::free_static(buf);
+	}
+
+	if (Engine::get_singleton()->has_singleton("Engine")) {
+		Engine::get_singleton()->get_singleton_object("Engine")->emit_signal("log_message", buffer.size());
+	}
+}
+
+void BufferedSingletonLogger::log_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, ErrorType p_type) {
+
+}
+
+

@@ -793,6 +793,8 @@ public:
 	void set_editor_hint(bool p_enabled);
 	bool is_editor_hint() const;
 
+	Array get_log_buffer() const;
+
 	_Engine();
 };
 
